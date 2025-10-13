@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  # MongoDB for auth service
+  mongodb-auth:
+    image: mongo:latest
+    container_name: mongodb-auth
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-auth-data:/data/db
+    networks:
+      - microservices-network
+
+  # MongoDB for product service
+  mongodb-product:
+    image: mongo:latest
+    container_name: mongodb-product
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb-product-data:/data/db
+    networks:
+      - microservices-network
+
+  # MongoDB for order service
+  mongodb-order:
+    image: mongo:latest
+    container_name: mongodb-order
+    restart: unless-stopped
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongodb-order-data:/data/db
+    networks:
+      - microservices-network
+
+  # RabbitMQ message broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - microservices-network
+
+  # Auth Service
+  auth:
+    build:
+      context: ./auth
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MONGODB_AUTH_URI=${MONGODB_AUTH_URI:-mongodb://mongodb-auth:27017/auth}
+      - JWT_SECRET=${JWT_SECRET:-secret}
+    depends_on:
+      - mongodb-auth
+    networks:
+      - microservices-network
+
+  # Product Service
+  product:
+    build:
+      context: ./product
+      dockerfile: Dockerfile
+    container_name: product-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - MONGODB_PRODUCT_URI=${MONGODB_PRODUCT_URI:-mongodb://mongodb-product:27017/products}
+      - RABBITMQ_URI=${RABBITMQ_URI:-amqp://admin:admin@rabbitmq:5672}
+    depends_on:
+      - mongodb-product
+      - rabbitmq
+    networks:
+      - microservices-network
+
+  # Order Service
+  order:
+    build:
+      context: ./order
+      dockerfile: Dockerfile
+    container_name: order-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PORT=3002
+      - MONGODB_ORDER_URI=${MONGODB_ORDER_URI:-mongodb://mongodb-order:27017/orders}
+      - RABBITMQ_URI=${RABBITMQ_URI:-amqp://admin:admin@rabbitmq:5672}
+    depends_on:
+      - mongodb-order
+      - rabbitmq
+    networks:
+      - microservices-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - PORT=3003
+    depends_on:
+      - auth
+      - product
+      - order
+    networks:
+      - microservices-network
+
+networks:
+  microservices-network:
+    driver: bridge
+
+volumes:
+  mongodb-auth-data:
+  mongodb-product-data:
+  mongodb-order-data:
+  rabbitmq-data:

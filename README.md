@@ -49,12 +49,49 @@ EProject-Phase-1 là hệ thống quản lý bán hàng theo kiến trúc micros
 - `utils/`: Hàm tiện ích dùng chung.
 
 ## Hướng dẫn phát triển & khởi chạy
+
+### Chạy với Docker (khuyên dùng)
+1. Đảm bảo đã cài đặt Docker và Docker Compose.
+2. Clone repository về máy.
+3. Tạo file `.env` từ file `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+4. Chỉnh sửa các biến môi trường trong file `.env` (nếu cần).
+5. Chạy tất cả services bằng Docker Compose:
+   ```bash
+   docker-compose up -d
+   ```
+6. Kiểm tra trạng thái các services:
+   ```bash
+   docker-compose ps
+   ```
+7. Xem logs của các services:
+   ```bash
+   docker-compose logs -f
+   ```
+8. Dừng tất cả services:
+   ```bash
+   docker-compose down
+   ```
+
+### Chạy thủ công (không dùng Docker)
 1. Cài đặt Node.js và npm.
-2. Vào từng thư mục service, chạy `npm install` để cài dependencies.
-3. Thiết lập file `.env` cho từng service (nếu cần).
-4. Chạy từng service bằng lệnh `node index.js` hoặc `npm start`.
-5. Đảm bảo các service chạy trên các port khác nhau (cấu hình trong file `config.js` hoặc `.env`).
-6. Có thể dùng Docker để đóng gói và chạy các service.
+2. Cài đặt MongoDB và RabbitMQ trên máy local.
+3. Vào từng thư mục service, chạy `npm install` để cài dependencies.
+4. Thiết lập file `.env` cho từng service (nếu cần).
+5. Chạy từng service bằng lệnh `node index.js` hoặc `npm start`.
+6. Đảm bảo các service chạy trên các port khác nhau (cấu hình trong file `config.js` hoặc `.env`).
+
+### Thông tin ports
+- API Gateway: `http://localhost:3003`
+- Auth Service: `http://localhost:3000`
+- Product Service: `http://localhost:3001`
+- Order Service: `http://localhost:3002`
+- MongoDB Auth: `localhost:27017`
+- MongoDB Product: `localhost:27018`
+- MongoDB Order: `localhost:27019`
+- RabbitMQ: `localhost:5672` (AMQP), `http://localhost:15672` (Management UI)
 
 ## Hướng dẫn test
 1. Vào thư mục chứa test, chạy `npm test` để kiểm tra các chức năng.
