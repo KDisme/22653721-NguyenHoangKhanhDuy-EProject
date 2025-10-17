@@ -516,7 +516,7 @@ db.products.find()
 
 **Nguyễn Hoàng Khánh Duy**  
 Student ID: 22653721  
-Email: [khanhduy201420@example.com]  
+Email: [khanhduy201420@gmail.com]  
 GitHub: https://github.com/KDisme
 
 ---
