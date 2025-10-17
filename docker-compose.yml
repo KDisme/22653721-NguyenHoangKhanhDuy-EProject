@@ -1,0 +1,92 @@
+
+
+services:
+  # MongoDB Database
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+
+
+#   # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+
+  # Auth Service
+  auth:
+    build:
+      context: ./auth
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_AUTH_URI=mongodb://admin:password@mongodb:27017/auth?authSource=admin
+      - JWT_SECRET=your-jwt-secret-key
+    depends_on:
+      - mongodb
+
+  # Product Service
+  product:
+    build:
+      context: ./product
+    container_name: product-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      MONGODB_PRODUCT_URI: mongodb://admin:password@mongodb:27017/products?authSource=admin
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+      JWT_SECRET: your-jwt-secret-key
+    depends_on:
+      - mongodb
+      - rabbitmq
+
+#   # Order Service
+  order:
+    build:
+      context: ./order
+    container_name: order-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      MONGODB_ORDER_URI: mongodb://admin:password@mongodb:27017/orders?authSource=admin
+      RABBITMQ_URI: amqp://guest:guest@rabbitmq:5672
+    depends_on:
+      - mongodb
+      - rabbitmq
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    depends_on:
+      - auth
+      - product
+      - order
+volumes:
+  mongodb_data:
+  rabbitmq_data:

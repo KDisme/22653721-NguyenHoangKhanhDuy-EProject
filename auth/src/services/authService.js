@@ -41,6 +41,9 @@ class AuthService {
 
     return await this.userRepository.createUser(user);
   }
+  async getUserById(userId) {
+    return await this.userRepository.getUserById(userId);
+  }
 
   async deleteTestUsers() {
     // Delete all users with a username that starts with "test"
