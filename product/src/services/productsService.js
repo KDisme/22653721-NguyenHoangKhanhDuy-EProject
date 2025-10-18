@@ -33,7 +33,7 @@ class ProductsService {
   }
 // THÊM METHOD MỚI - Xử lý logic nghiệp vụ khi mua products
 // Kiểm tra tồn kho, giảm số lượng, tính tổng giá
-async buyProducts(ids, quantities) {
+async buyProducts(ids, quantities, username) {
   // Validate input
   if (!Array.isArray(ids) || !Array.isArray(quantities)) {
     throw new Error('ids and quantities must be arrays');
@@ -95,7 +95,8 @@ async buyProducts(ids, quantities) {
         totalPrice: product.price * quantity 
       };
     }),
-    totalPrice: totalPrice 
+    totalPrice: totalPrice,
+    username: username  // ← Thêm username vào kết quả trả về
   };
 }
 }

@@ -163,7 +163,7 @@ class ProductController {
     // - Kiểm tra tồn kho
     // - Giảm số lượng products
     // - Tính totalPrice
-    const orderResult = await this.productsService.buyProducts(ids, quantity);
+    const orderResult = await this.productsService.buyProducts(ids, quantity, req.user.username);
 
     const orderId = uuid.v4(); // Generate a unique order ID
     
@@ -173,8 +173,8 @@ class ProductController {
       status: "pending", 
       products: orderResult.products, // Products sau khi đã giảm số lượng
       totalPrice: orderResult.totalPrice, // Tổng giá đã tính
-      orderDetails: orderResult.orderDetails // Chi tiết từng product (id, quantity, price)
-      
+      orderDetails: orderResult.orderDetails, // Chi tiết từng product (id, quantity, price)
+      username: orderResult.username // Thêm username vào thông tin order
     });
 
     // THAY ĐỔI: Gửi message đến order service với totalPrice
@@ -183,6 +183,7 @@ class ProductController {
       totalPrice: orderResult.totalPrice,
       orderDetails: orderResult.orderDetails,
       orderId, // include the order ID in the message to orders queue
+      username: req.user.username,
     });
 
     messageBroker.consumeMessage("products", (data) => {
