@@ -61,12 +61,17 @@ jobs:
     - name: Install auth dependencies
       working-directory: auth
       run: |
+        # Install production dependencies first
         npm install
-        npm install chai@4.3.7 chai-http@4.4.0 mocha@10.2.0 dotenv --save-dev
+        # Install test dependencies (CommonJS compatible versions)
+        npm install --save-dev chai@4.3.4 chai-http@4.3.0 mocha@9.2.2 dotenv@16.0.3
 
     - name: Install product dependencies  
       working-directory: product
-      run: npm install
+      run: |
+        npm install
+        # Ensure compatible test library versions
+        npm install --save chai@4.3.4 chai-http@4.3.0 mocha@9.2.2
 
     - name: Install api-gateway dependencies
       working-directory: api-gateway
