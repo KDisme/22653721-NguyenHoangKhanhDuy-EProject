@@ -4,34 +4,89 @@ on: [push, pull_request]
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      mongodb:
+        image: mongo:4.4
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongo --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3.2.0
-    - name: Create .env file
-      run: |
-        echo "MONGODB_AUTH_URI=${{ secrets.MONGODB_PRODUCT_URI }}" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> product/.env
-        echo "MONGODB_PRODUCT_URI=${{ secrets.MONGODB_PRODUCT_URI }}" >> product/.env
-        echo "LOGIN_TEST_USER=${{ secrets.LOGIN_TEST_USER }}" >> product/.env
-        echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> product/.env
+      uses: actions/checkout@v4
 
-    - name: Install dependencies
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Create .env files
       run: |
-        cd auth
-        npm ci
-        cd ..
-        cd product
-        npm ci
-        cd ..
-        npm ci
-    - name: Run tests for auth
-      run : |
-        cd auth
-        npm test
-    - name: Run tests for product
+        echo "MONGODB_AUTH_URI=mongodb://localhost:27017/test_auth" >> auth/.env
+        echo "JWT_SECRET=test-jwt-secret-key" >> auth/.env
+        echo "MONGODB_PRODUCT_URI=mongodb://localhost:27017/test_product" >> product/.env
+        echo "JWT_SECRET=test-jwt-secret-key" >> product/.env
+        echo "RABBITMQ_URI=amqp://localhost:5672" >> product/.env
+        echo "LOGIN_TEST_USER=testuser" >> product/.env
+        echo "LOGIN_TEST_PASSWORD=testpassword" >> product/.env
+
+    - name: Wait for services to be ready
       run: |
-        cd auth &&
-        npm start &
-        cd product
+        echo "Waiting for MongoDB..."
+        timeout 60 bash -c 'until nc -z localhost 27017; do sleep 1; done'
+        echo "Waiting for RabbitMQ..."
+        timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
+        echo "Services are ready!"
+
+    - name: Install root dependencies
+      run: npm install
+
+    - name: Install auth dependencies
+      working-directory: auth
+      run: |
+        npm install
+        npm install chai chai-http mocha dotenv --save-dev
+
+    - name: Install product dependencies  
+      working-directory: product
+      run: npm install
+
+    - name: Install api-gateway dependencies
+      working-directory: api-gateway
+      run: npm install
+
+    - name: Install order dependencies
+      working-directory: order
+      run: npm install
+
+    - name: Run auth service tests
+      working-directory: auth
+      run: npm test
+
+    - name: Run product service tests
+      working-directory: product
+      run: |
+        # Start auth service in background for product tests
+        cd ../auth && npm start &
+        AUTH_PID=$!
+        cd ../product
+        sleep 5
         npm test
+        kill $AUTH_PID || true
