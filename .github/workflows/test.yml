@@ -92,6 +92,11 @@ jobs:
         cd ../auth && npm start &
         AUTH_PID=$!
         cd ../product
-        sleep 5
+        sleep 10
+        # Create test user first
+        curl -X POST http://localhost:3000/register \
+          -H "Content-Type: application/json" \
+          -d '{"username": "testuser", "password": "testpassword"}'
+        sleep 2
         npm test
         kill $AUTH_PID || true
