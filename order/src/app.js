@@ -38,18 +38,12 @@ class App {
         channel.consume("orders", async (data) => {
           // Consume messages from the order queue on buy
           console.log("Consuming ORDER service");
-        
-          // THAY ĐỔI: Nhận thêm totalPrice và orderDetails từ Product service
-          const { products, username, orderId, totalPrice, orderDetails } = JSON.parse(data.content);
+          const { products, username, orderId } = JSON.parse(data.content);
   
-         
-          // THAY ĐỔI: Sử dụng totalPrice đã tính từ Product service
-       
           const newOrder = new Order({
             products,
             user: username,
-            totalPrice: totalPrice, // Sử dụng totalPrice đã tính từ Product service
-            orderDetails: orderDetails, // Lưu chi tiết order (productId, quantity, price)
+            totalPrice: products.reduce((acc, product) => acc + product.price, 0),
           });
   
           // Save order to DB
@@ -61,11 +55,10 @@ class App {
   
           // Send fulfilled order to PRODUCTS service
           // Include orderId in the message
-          // THAY ĐỔI: Sử dụng tên biến khác để tránh conflict
-          const { user, products: savedProducts, totalPrice: orderTotalPrice } = newOrder.toJSON();
+          const { user, products: savedProducts, totalPrice } = newOrder.toJSON();
           channel.sendToQueue(
             "products",
-            Buffer.from(JSON.stringify({ orderId, user, products: savedProducts, totalPrice: orderTotalPrice }))
+            Buffer.from(JSON.stringify({ orderId, user, products: savedProducts, totalPrice }))
           );
         });
       } catch (err) {

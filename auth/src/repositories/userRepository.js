@@ -11,10 +11,6 @@ class UserRepository {
   async getUserByUsername(username) {
     return await User.findOne({ username });
   }
-
-  async getUserById(userId) {
-    return await User.findById(userId).select('-password');
-  }
 }
 
 module.exports = UserRepository;

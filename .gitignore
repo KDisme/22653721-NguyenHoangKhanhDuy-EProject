@@ -1,29 +1,49 @@
-# Node.js
+# Node modules
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Logs
+logs
+*.log
+logs/*.log
+
+# Environment variables
 .env
-npm-debug.log
-yarn-error.log
+*.env
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Build output
 dist/
 build/
-coverage/
-.DS_Store
-*.log
-*.sqlite
-*.sqlite3
-*.db
-*.tgz
-.idea/
+
+# IDE/editor configs
 .vscode/
-*.swp
-*.swo
-*.bak
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Coverage
+coverage/
+*.lcov
+
+# Temporary
 *.tmp
-*.cache
-# OS
-Thumbs.db
-Desktop.ini
-# Others
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+*.temp
+
+# TypeScript build
+*.tsbuildinfo
+
+# Docker
+docker-compose.yml
+docker-compose.override.yml
+
+.dockerignore
+package-lock.json
+yarn.lock

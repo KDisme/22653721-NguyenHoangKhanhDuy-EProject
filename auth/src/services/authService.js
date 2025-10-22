@@ -30,7 +30,7 @@ class AuthService {
       return { success: false, message: "Invalid username or password" };
     }
 
-    const token = jwt.sign({ id: user._id, username: user.username }, config.jwtSecret);
+    const token = jwt.sign({ id: user._id }, config.jwtSecret);
 
     return { success: true, token };
   }
@@ -40,9 +40,6 @@ class AuthService {
     user.password = await bcrypt.hash(user.password, salt);
 
     return await this.userRepository.createUser(user);
-  }
-  async getUserById(userId) {
-    return await this.userRepository.getUserById(userId);
   }
 
   async deleteTestUsers() {

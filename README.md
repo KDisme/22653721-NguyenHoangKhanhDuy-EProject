@@ -1,529 +1,228 @@
+# EProject - Microservices E-Commerce Platform### EProject Phase 1 - Microservices
 
-# 🛒 E-Commerce Microservices System
-**Student ID:** 22653721  
-**Author:** Nguyễn Hoàng Khánh Duy
+## 📋 Mô Tả Dự Án
 
----
+Đây là một dự án e-commerce được xây dựng theo kiến trúc microservices, sử dụng Node.js, Express, MongoDB, và RabbitMQ. Hệ thống bao gồm các dịch vụ độc lập giao tiếp với nhau thông qua API Gateway và Message Broker.Project này là một demo về kiến trúc microservices để học tập. Nó gồm các service tách biệt:
 
-## 📋 Mục Lục
-- [Giới Thiệu](#-giới-thiệu)
-- [Kiến Trúc Hệ Thống](#-kiến-trúc-hệ-thống)
-- [Công Nghệ Sử Dụng](#-công-nghệ-sử-dụng)
-- [Cấu Trúc Dự Án](#-cấu-trúc-dự-án)
-- [Hướng Dẫn Cài Đặt](#-hướng-dẫn-cài-đặt)
-- [API Documentation](#-api-documentation)
-- [Luồng Xử Lý Mua Hàng](#-luồng-xử-lý-mua-hàng)
-- [Testing](#-testing)
-- [Troubleshooting](#-troubleshooting)
+## 🏗️ Kiến Trúc Hệ Thống- `auth` - Authentication service (xử lý đăng ký/đăng nhập, trả JWT)
 
----
+- `product` - Product service (CRUD sản phẩm, publish message khi mua)
 
-## 🎯 Giới Thiệu
+Dự án được chia thành 4 microservices chính:- `order` - Order service (consume message để tạo đơn hàng)
 
-Hệ thống quản lý bán hàng điện tử xây dựng theo kiến trúc **Microservices**, cho phép:
-- ✅ Quản lý người dùng (đăng ký, đăng nhập, xác thực JWT)
-- ✅ Quản lý sản phẩm (CRUD operations)
-- ✅ Quản lý đơn hàng (tạo order, tính tổng giá, cập nhật tồn kho)
-- ✅ Giao tiếp bất đồng bộ giữa các services qua RabbitMQ
-- ✅ Kiến trúc phân tầng (Controller → Service → Repository → Model)
+- `api-gateway` - API Gateway (định tuyến request từ client tới service tương ứng)
 
----
+### 1. **API Gateway** (Port: 3003)
 
-## 🏗️ Kiến Trúc Hệ Thống
+- Điểm truy cập trung tâm cho tất cả các servicesRabbitMQ được sử dụng làm message broker giữa các service (queue tên `products` theo cấu hình mặc định). MongoDB được dùng để lưu dữ liệu cho từng service.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        CLIENT                               │
-│                    (Postman/Browser)                        │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ↓
-┌────────────────────────────────────────────────────────────┐
-│                   API GATEWAY (Port 3003)                  │
-│          - Routing & Load Balancing                        │
-│          - Single Entry Point                              │
-└─────┬──────────────────┬──────────────────┬────────────────┘
-      │                  │                  │
-      ↓                  ↓                  ↓
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ AUTH SERVICE │  │PRODUCT SERVICE│  │ORDER SERVICE │
-│ (Port 3000)  │  │ (Port 3001)   │  │ (Port 3002)  │
-│              │  │               │  │              │
-│ - Register   │  │ - CRUD Product│  │ - Save Order │
-│ - Login      │  │ - Buy Product │  │ - History    │
-│ - JWT Auth   │  │ - Stock Mgmt  │  │              │
-└──────┬───────┘  └───────┬───────┘  └──────┬───────┘
-       │                  │                  │
-       └──────────────────┼──────────────────┘
-                          │
-                ┌─────────┴─────────┐
-                │                   │
-                ↓                   ↓
-        ┌──────────────┐    ┌──────────────┐
-        │   MongoDB    │    │   RabbitMQ   │
-        │  (Port 27018)│    │  (Port 5672) │
-        │              │    │              │
-        │ - auth DB    │    │ - orders Q   │
-        │ - products DB│    │ - products Q │
-        │ - orders DB  │    │              │
-        └──────────────┘    └──────────────┘
-```
+- Định tuyến requests đến các services tương ứng
 
----
+- Reverse proxy sử dụng http-proxy> Lưu ý: dự án này chỉ phục vụ cho mục đích học tập, không dùng cho production.
 
-## 🛠️ Công Nghệ Sử Dụng
 
-| Thành Phần | Công Nghệ | Version | Mô Tả |
-|------------|-----------|---------|-------|
-| **Runtime** | Node.js | 18.x | JavaScript runtime |
-| **Framework** | Express.js | 4.18.x | Web framework |
-| **Database** | MongoDB | 6.0 | NoSQL database |
-| **ODM** | Mongoose | 7.0.x | MongoDB object modeling |
-| **Message Broker** | RabbitMQ | 3.12 | Asynchronous messaging |
-| **Authentication** | JWT | 9.0.x | Token-based auth |
-| **Password Hashing** | bcrypt.js | - | Secure password storage |
-| **Container** | Docker | - | Containerization |
-| **Testing** | Mocha/Chai | 10.2.x/4.3.x | Unit & Integration tests |
 
----
+### 2. **Auth Service** (Port: 3000)
 
-## 📁 Cấu Trúc Dự Án
+- Xác thực và quản lý người dùng
+
+- Đăng ký, đăng nhập, và quản lý JWT tokens## Cấu trúc thư mục
+
+- Database: MongoDB (auth_service)
 
 ```
-22653721-NguyenHoangKhanhDuy-EProject/
-│
-├── api-gateway/                 # API Gateway Service
-│   ├── Dockerfile
-│   ├── index.js                 # Entry point
-│   └── package.json
-│
-├── auth/                        # Authentication Service
-│   ├── src/
-│   │   ├── controllers/         # Controller layer
-│   │   │   └── authController.js
-│   │   ├── services/            # Business logic layer
-│   │   │   └── authService.js
-│   │   ├── repositories/        # Data access layer
-│   │   │   └── userRepository.js
-│   │   ├── models/              # Database models
-│   │   │   └── user.js
-│   │   ├── middlewares/
-│   │   │   └── authMiddleware.js
-│   │   └── config/              # Configuration
-│   │       └── index.js
-│   ├── Dockerfile
-│   ├── index.js
-│   └── package.json
-│
-├── product/                     # Product Service
-│   ├── src/
-│   │   ├── controllers/         
-│   │   │   └── productController.js  # Handle HTTP requests
-│   │   ├── services/            
-│   │   │   └── productsService.js    # Business logic (buy, calculate)
-│   │   ├── repositories/        
-│   │   │   └── productsRepository.js # Database operations
-│   │   ├── models/              
-│   │   │   └── product.js            # Product schema
-│   │   ├── routes/
-│   │   │   └── productRoutes.js      # API routes
-│   │   └── utils/
-│   │       ├── isAuthenticated.js    # JWT middleware
-│   │       └── messageBroker.js      # RabbitMQ helper
-│   ├── Dockerfile
-│   ├── index.js
-│   └── package.json
-│
-├── order/                       # Order Service
-│   ├── src/
-│   │   ├── app.js               # Main application logic
-│   │   ├── models/
-│   │   │   └── order.js         # Order schema
-│   │   ├── config.js            # Configuration
-│   │   └── utils/
-│   │       ├── isAuthenticated.js
-│   │       └── messageBroker.js
-│   ├── Dockerfile
-│   ├── index.js
-│   └── package.json
-│
-├── docker-compose.yml           # Docker orchestration
-├── package.json                 # Root package.json for testing
-└── README.md                    # This file
-```
 
----
+**Chức năng chính:**EProject-Phase-1/
 
-## 🚀 Hướng Dẫn Cài Đặt
+- `POST /auth/register` - Đăng ký tài khoản mới ┣ api-gateway/
 
-### **Yêu Cầu Hệ Thống**
+- `POST /auth/login` - Đăng nhập và nhận JWT token ┣ auth/
+
+- `GET /auth/profile` - Lấy thông tin người dùng (yêu cầu authentication) ┣ order/
+
+ ┣ product/
+
+### 3. **Product Service** (Port: 3001) ┗ README.md
+
+- Quản lý sản phẩm và tạo đơn hàng```
+
+- Giao tiếp với Order Service qua RabbitMQ
+
+- Database: MongoDB (product_service)Mỗi service chứa:
+
+- `index.js` – Điểm khởi động chính
+
+**Chức năng chính:**- `src/` – Controller, route, model
+
+- `POST /products` - Tạo sản phẩm mới (yêu cầu authentication)- `.env` – Biến môi trường riêng
+
+- `GET /products` - Lấy danh sách sản phẩm (yêu cầu authentication)
+
+- `POST /products/buy` - Tạo đơn hàng (yêu cầu authentication)---
+
+- `GET /products/order/:orderId` - Kiểm tra trạng thái đơn hàng```
+
+
+
+### 4. **Order Service** (Port: 3002)### 2️⃣ Khởi động MongoDB và RabbitMQ
+
+- Xử lý đơn hàng---
+
+- Lắng nghe messages từ Product Service qua RabbitMQ
+
+- Database: MongoDB (order_service)### 3️⃣ Khởi động các microservices
+
+Sau khi MongoDB và RabbitMQ ổn định:
+
+## 🛠️ Công Nghệ Sử Dụng---
+
+
+
+### Backend## 🌐 Đường dẫn truy cập các service
+
+- **Node.js & Express** - Framework web---
+
+- **MongoDB** - NoSQL database cho mỗi service
+
+- **Mongoose** - ODM cho MongoDB## 🧩 Thử nghiệm dự án với POSTMAN
+
+- **RabbitMQ** - Message broker cho async communication
+
+- **JWT (jsonwebtoken)** - Authentication### Auth Service
+
+- **bcryptjs** - Mã hóa mật khẩu
+
+**1. Đăng ký (Register)**
+
+### DevOps & Tools
+
+- **Docker & Docker Compose** - Container orchestration!
+
+- **Mocha & Chai** - Testing framework
+
+- **dotenv** - Environment variables management**2. Đăng nhập (Login)**
+
+## 🚀 Cài Đặt và Chạy Dự Án
+
+### Yêu Cầu Hệ Thống
+- Node.js (v8)
 - Docker & Docker Compose
-- Node.js 18.x (nếu chạy local không dùng Docker)
-- MongoDB 6.0+
-- RabbitMQ 3.12+
+- MongoDB (nếu chạy local)
+- RabbitMQ (nếu chạy local)
 
-### **Cài Đặt Với Docker (Khuyên Dùng)**
+### 1. Sử Dụng Docker (Khuyến nghị)
 
-#### **Bước 1: Clone Repository**
 ```bash
-git clone https://github.com/KDisme/22653721-NguyenHoangKhanhDuy-EProject.git
-cd 22653721-NguyenHoangKhanhDuy-EProject
+# Clone repository
+git clone <repository-url>
+cd EProject-Phase-1
+
+# Khởi động toàn bộ hệ thống với Docker Compose
+docker-compose up --build
+
+# Hoặc chạy ở chế độ background
+docker-compose up -d --build
 ```
 
-#### **Bước 2: Khởi Động Tất Cả Services**
-```bash
-# Build và start tất cả containers
-docker-compose up --build -d
+Sau khi khởi động thành công, các services sẽ chạy tại:
+- API Gateway: http://localhost:3003
+- Auth Service: http://localhost:3000
+- Product Service: http://localhost:3001
+- Order Service: http://localhost:3002
+- RabbitMQ Management: http://localhost:15672 (guest/guest)
 
-# Hoặc start từng service riêng lẻ
-docker-compose up --build auth -d
-docker-compose up --build product -d
-docker-compose up --build order -d
-docker-compose up --build api-gateway -d
+### 2. Chạy Local (Development)
+
+```bash
+# Cài đặt dependencies cho từng service
+npm install
+
+cd auth && npm install
+cd ../product && npm install
+cd ../order && npm install
+cd ../api-gateway && npm install
+
+# Tạo file .env cho mỗi service
+# Xem phần "Biến Môi Trường" bên dưới
+
+# Khởi động từng service trong terminal riêng
+cd auth && npm start
+cd product && npm start
+cd order && npm start
+cd api-gateway && npm start
 ```
 
-#### **Bước 3: Kiểm Tra Trạng Thái**
-```bash
-# Xem trạng thái containers
-docker-compose ps
+## 📡 API Endpoints
 
-# Xem logs
+### Authentication
+```
+POST   /auth/register     # Đăng ký tài khoản
+POST   /auth/login        # Đăng nhập
+GET    /auth/profile      # Lấy thông tin user (Bearer token required)
+```
+
+### Products
+```
+POST   /products          # Tạo sản phẩm mới (Bearer token required)
+GET    /products          # Lấy danh sách sản phẩm (Bearer token required)
+POST   /products/buy      # Tạo đơn hàng (Bearer token required)
+GET    /products/order/:orderId  # Kiểm tra trạng thái đơn hàng
+```
+
+## 🔄 Workflow Tạo Đơn Hàng
+
+1. User đăng nhập và nhận JWT token
+2. User gọi API `/products/buy` với danh sách product IDs
+3. Product Service tạo order ID và publish message vào RabbitMQ queue "orders"
+4. Order Service consume message từ queue và xử lý đơn hàng
+5. Order Service publish kết quả vào queue "products"
+6. Product Service nhận kết quả và trả về cho client (sử dụng long polling)
+
+## 🔐 Authentication Flow
+
+1. **Đăng ký**: User tạo tài khoản với username và password
+2. **Mã hóa**: Password được hash bằng bcryptjs trước khi lưu vào DB
+3. **Đăng nhập**: Server verify thông tin và trả về JWT token
+4. **Authorization**: Client gửi token trong header `Authorization: Bearer <token>`
+5. **Middleware**: Services verify token trước khi xử lý protected routes
+
+## 🐳 Docker Services
+
+```yaml
+services:
+  - rabbitmq (Message Broker)
+  - mongodb (Database)
+  - api-gateway (Reverse Proxy)
+  - auth (Authentication Service)
+  - product (Product Management)
+  - order (Order Processing)
+```
+
+## 🔍 Monitoring & Debug
+
+### RabbitMQ Management UI
+- URL: http://localhost:15672
+- Username: guest
+- Password: guest
+- Monitor queues: "orders" và "products"
+
+### MongoDB
+- Connection: mongodb://localhost:27017
+- Databases: auth_service, product_service, order_service
+
+### Docker Logs
+```bash
+# Xem logs của tất cả services
+docker-compose logs -f
+
+# Xem logs của một service cụ thể
+docker-compose logs -f auth
 docker-compose logs -f product
 docker-compose logs -f order
-docker-compose logs -f auth
 ```
+## Profile
 
-#### **Bước 4: Stop Services**
-```bash
-# Stop tất cả
-docker-compose down
+Họ Tên: Huỳnh Văn Quân
+MSSV: 22636731
 
-# Stop và xóa volumes (data sẽ bị mất)
-docker-compose down -v
-```
-
-### **Cài Đặt Local (Không Dùng Docker)**
-
-#### **1. Cài Dependencies**
-```bash
-# Cài cho từng service
-cd auth && npm install && cd ..
-cd product && npm install && cd ..
-cd order && npm install && cd ..
-cd api-gateway && npm install && cd ..
-```
-
-#### **2. Setup MongoDB & RabbitMQ**
-```bash
-# MongoDB
-mongod --dbpath /path/to/data/db --port 27018
-
-# RabbitMQ
-rabbitmq-server
-```
-
-#### **3. Chạy Services**
-```bash
-# Terminal 1 - Auth Service
-cd auth
-node index.js
-
-# Terminal 2 - Product Service
-cd product
-node index.js
-
-# Terminal 3 - Order Service
-cd order
-node index.js
-
-# Terminal 4 - API Gateway
-cd api-gateway
-node index.js
-```
-
----
-
-## 📡 API Documentation
-
-### **Base URL**
-```
-http://localhost:3003
-```
-
-### **🔐 Authentication Endpoints**
-
-#### 1. Register User
-```http
-POST /auth/api/register
-Content-Type: application/json
-
-{
-  "username": "johndoe",
-  "password": "securepassword123",
-  "email": "john@example.com"
-}
-```
-
-
-#### 2. Login
-```http
-POST /auth/api/login
-Content-Type: application/json
-
-{
-  "username": "johndoe",
-  "password": "securepassword123"
-}
-```
-
-**Response:**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-#### 3. Get Profile
-```http
-GET /auth/api/profile
-Authorization: Bearer <token>
-```
-
----
-
-### **📦 Product Endpoints**
-
-#### 1. Create Product
-```http
-POST /products/api/products
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "name": "iPhone 15 Pro",
-  "price": 25000000,
-  "description": "Latest iPhone model",
-  "quantity": 50
-}
-```
-
-#### 2. Get All Products
-```http
-GET /products/api/products
-Authorization: Bearer <token>
-```
-
-
-#### 3. Get Product By ID
-```http
-GET /products/api/products/:id
-Authorization: Bearer <token>
-```
-
-#### 4. Update Product
-```http
-PUT /products/api/products/:id
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "price": 24000000,
-  "quantity": 45
-}
-```
-
-#### 5. Delete Product
-```http
-DELETE /products/api/products/:id
-Authorization: Bearer <token>
-```
-
-#### 6. **Buy Products (Create Order)** ⭐
-```http
-POST /products/api/products/buy
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "ids": ["productID 1", "productID 2"],
-  "quantity": [2, 3]
-}
-
-
-## 🔄 Luồng Xử Lý Mua Hàng
-
-### **Flow Diagram**
-
-```
-Client → API Gateway → Product Service
-                           ↓
-                    [Product Controller]
-                           ↓
-                    [Product Service]
-                           ↓ (1) Validate input
-                           ↓ (2) Get products from DB
-                           ↓ (3) Check stock availability
-                           ↓ (4) Decrease quantity (atomic $inc)
-                           ↓ (5) Calculate totalPrice
-                           ↓
-                    [Product Repository]
-                           ↓
-                       MongoDB ← Update quantity
-                           ↓
-                    Generate orderId
-                           ↓
-                   Publish to RabbitMQ
-                        (orders queue)
-                           ↓
-                    ┌─────────────┐
-                    │ Order Service │
-                    └─────────────┘
-                           ↓ Consume message
-                           ↓ Create Order document
-                           ↓ Save to MongoDB
-                           ↓ Send ACK
-                           ↓ Publish confirmation
-                        (products queue)
-                           ↓
-                    Product Service receives
-                           ↓ Update order status
-                           ↓ Return to client
-```
-
-### **Chi Tiết Các Bước**
-
-1. **Client gửi request** với `ids` và `quantity`
-2. **Product Service validate** input và kiểm tra tồn kho
-3. **Repository giảm số lượng** sản phẩm trong DB (atomic operation)
-4. **Service tính toán**:
-   - `totalPrice` = Σ(price × quantity)
-   - Tạo `orderDetails` cho từng sản phẩm
-5. **Gửi message** qua RabbitMQ đến Order Service
-6. **Order Service nhận**, lưu order vào DB
-7. **Order Service gửi confirmation** về Product Service
-8. **Product Service trả response** cho client
-
-### **Ưu Điểm Của Kiến Trúc Này**
-
-✅ **Decoupling**: Services độc lập, dễ maintain  
-✅ **Asynchronous**: Không block khi tạo order  
-✅ **Scalability**: Dễ dàng scale horizontal  
-✅ **Fault Tolerance**: RabbitMQ đảm bảo message không mất  
-✅ **Data Consistency**: Atomic operations với MongoDB  
-
-### **Test Với Postman**
-
-#### **1. Setup Environment**
-```
-Base URL: http://localhost:3003
-Token: {{token}}
-```
-
-#### **2. Test Flow**
-```
-1. Register → Get user credentials
-2. Login → Get JWT token
-3. Create Product → Add products to inventory
-4. Buy Products → Test order flow
-5. Verify:
-   - Product quantity decreased
-   - Order created in MongoDB
-   - Correct totalPrice calculation
-```
-
-### **Sample Test Cases**
-
-| Test Case | Input | Expected Output |
-|-----------|-------|-----------------|
-| Buy 1 product | `ids: ["id1"], quantity: [2]` | totalPrice = price × 2 |
-| Buy 2 products | `ids: ["id1","id2"], quantity: [2,3]` | totalPrice = (price1×2) + (price2×3) |
-| Insufficient stock | `quantity: [999]` | 400 Error: "Not enough quantity" |
-| Invalid product | `ids: ["invalid"]` | 404 Error: "Product not found" |
-
----
-
-## ⚠️ Troubleshooting
-
-### **Container Không Start**
-```bash
-# Kiểm tra logs
-docker-compose logs <service-name>
-
-# Rebuild lại
-docker-compose up --build <service-name> -d
-```
-
-### **RabbitMQ Connection Error**
-```bash
-# Kiểm tra RabbitMQ đang chạy
-docker-compose ps rabbitmq
-
-# Restart RabbitMQ
-docker-compose restart rabbitmq
-```
-
-### **MongoDB Connection Error**
-```bash
-# Kiểm tra MongoDB
-docker exec -it mongodb mongosh
-
-# Test connection
-use admin
-db.auth("admin", "password")
-```
-
-### **JWT Token Invalid**
-- Đảm bảo `JWT_SECRET` giống nhau ở tất cả services
-- Token format: `Bearer <token>`
-- Check token expiration
-
-### **Product Quantity Không Giảm**
-```bash
-# Check logs của Product service
-docker-compose logs product
-
-# Check MongoDB
-docker exec -it mongodb mongosh
-use products
-db.products.find()
-```
-
-## 🔒 Security
-
-- ✅ Passwords được hash với bcrypt
-- ✅ JWT cho authentication
-- ✅ Tất cả endpoints (trừ login/register) cần token
-- ✅ Environment variables cho sensitive data
-- ✅ Input validation ở Controller layer
-
----
-
-## 📈 Future Improvements
-
-- [ ] Implement Redis caching
-- [ ] Add MongoDB transactions cho data consistency
-- [ ] Implement dead letter queue cho failed messages
-- [ ] Add API rate limiting
-- [ ] Implement logging với Winston/Morgan
-- [ ] Add Swagger documentation
-- [ ] Implement health check endpoints
-- [ ] Add Docker health checks
-- [ ] Implement CI/CD pipeline
-
----
-
-## 📞 Contact
-
-**Nguyễn Hoàng Khánh Duy**  
-Student ID: 22653721  
-Email: [khanhduy201420@gmail.com]  
-GitHub: https://github.com/KDisme
-
----
-
-## 📄 License
-
-MR.HUYNHNAM
-
----
-
+Repository: HuynhQuanIT/22636731-HuynhVanQuan-EProject
