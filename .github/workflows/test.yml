@@ -62,7 +62,7 @@ jobs:
       working-directory: auth
       run: |
         npm install
-        npm install chai chai-http mocha dotenv --save-dev
+        npm install chai@4.3.7 chai-http@4.4.0 mocha@10.2.0 dotenv --save-dev
 
     - name: Install product dependencies  
       working-directory: product
