@@ -1,102 +1,144 @@
-name: CI
-on: [push, pull_request]
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
 
-    services:
-      mongodb:
-        image: mongo:4.4
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongo --eval 'db.runCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      rabbitmq:
-        image: rabbitmq:3-management
-        ports:
-          - 5672:5672
-          - 15672:15672
-        options: >-
-          --health-cmd "rabbitmq-diagnostics ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build Auth service image
+        run: docker build -t auth-service ./auth
+
+      - name: Build Product service image
+        run: docker build -t product-service ./product
+
+      - name: Build Order service image
+        run: docker build -t order-service ./order
+
+      - name: Build API Gateway image
+        run: docker build -t api-gateway ./api-gateway
+
+  docker-scout:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      matrix:
+        include:
+          - service: auth
+            context: ./auth
+            image: auth-service
+          - service: product
+            context: ./product
+            image: product-service
+          - service: order
+            context: ./order
+            image: order-service
+          - service: api-gateway
+            context: ./api-gateway
+            image: api-gateway
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Create .env files
-      run: |
-        echo "MONGODB_AUTH_URI=mongodb://localhost:27017/test_auth" >> auth/.env
-        echo "JWT_SECRET=test-jwt-secret-key" >> auth/.env
-        echo "MONGODB_PRODUCT_URI=mongodb://localhost:27017/test_product" >> product/.env
-        echo "JWT_SECRET=test-jwt-secret-key" >> product/.env
-        echo "RABBITMQ_URI=amqp://localhost:5672" >> product/.env
-        echo "LOGIN_TEST_USER=testuser" >> product/.env
-        echo "LOGIN_TEST_PASSWORD=testpassword" >> product/.env
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_NAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
 
-    - name: Wait for services to be ready
-      run: |
-        echo "Waiting for MongoDB..."
-        timeout 60 bash -c 'until nc -z localhost 27017; do sleep 1; done'
-        echo "Waiting for RabbitMQ..."
-        timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
-        echo "Services are ready!"
+      - name: Build ${{ matrix.service }} image
+        run: docker build -t ${{ matrix.image }}:scout ${{ matrix.context }}
 
-    - name: Install root dependencies
-      run: npm install
+      - name: Analyze ${{ matrix.service }} image with Docker Scout
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: ${{ matrix.image }}:scout
+          sarif-file: ${{ matrix.image }}-docker-scout.sarif
+          exit-code: false
+          accept-license: true
 
-    - name: Install auth dependencies
-      working-directory: auth
-      run: |
-        # Install production dependencies first
-        npm install
-        # Install test dependencies (CommonJS compatible versions)
-        npm install --save-dev chai@4.3.4 chai-http@4.3.0 mocha@9.2.2 dotenv@16.0.3
+      - name: Upload Docker Scout results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ matrix.image }}-docker-scout.sarif
 
-    - name: Install product dependencies  
-      working-directory: product
-      run: |
-        npm install
-        # Ensure compatible test library versions
-        npm install --save chai@4.3.4 chai-http@4.3.0 mocha@9.2.2
 
-    - name: Install api-gateway dependencies
-      working-directory: api-gateway
-      run: npm install
+  push-docker-images:
+    needs: build-and-test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
 
-    - name: Install order dependencies
-      working-directory: order
-      run: npm install
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Run auth service tests
-      working-directory: auth
-      run: npm test
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    - name: Run product service tests
-      working-directory: product
-      run: |
-        # Start auth service in background for product tests
-        cd ../auth && npm start &
-        AUTH_PID=$!
-        cd ../product
-        sleep 10
-        # Create test user first
-        curl -X POST http://localhost:3000/register \
-          -H "Content-Type: application/json" \
-          -d '{"username": "testuser", "password": "testpassword"}'
-        sleep 2
-        npm test
-        kill $AUTH_PID || true
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_NAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and push service images
+        env:
+          REGISTRY: ${{ secrets.DOCKER_NAME }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          if [ -z "$REGISTRY" ]; then
+            echo "Docker Hub username secret is not configured" >&2
+            exit 1
+          fi
+
+          services=(auth product order api-gateway)
+          for service in "${services[@]}"; do
+            IMAGE_SHA="$REGISTRY/$service:${GIT_SHA::7}"
+            IMAGE_LATEST="$REGISTRY/$service:latest"
+
+            echo "Building and pushing $service..."
+            docker build -t "$IMAGE_SHA" -t "$IMAGE_LATEST" "./$service"
+            docker push "$IMAGE_SHA"
+            docker push "$IMAGE_LATEST"
+          done
+
+      - name: Confirm secrets status
+        run: |
+          if [ -z "${{ secrets.DOCKER_NAME }}" ] || [ -z "${{ secrets.DOCKER_TOKEN }}" ]; then
+            echo "Missing Docker secrets"
+            exit 1
+          else
+            echo "Docker secrets found and used successfully"
+          fi
