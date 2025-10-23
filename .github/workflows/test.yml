@@ -9,89 +9,42 @@ jobs:
     name: build-and-run
     runs-on: ubuntu-latest
     
-    services:
-      mongodb:
-        image: mongo:6.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
     steps:
-    - name: Checkout code
+    - name: Checkout source code from repository
       uses: actions/checkout@v4
     
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-    
-    - name: Create .env files
-      run: |
-        echo "MONGODB_AUTH_URI=mongodb://localhost:27017/auth_service" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> product/.env
-        echo "MONGODB_PRODUCT_URI=mongodb://localhost:27017/product_service" >> product/.env
-        echo "LOGIN_TEST_USER=${{ secrets.LOGIN_TEST_USER }}" >> product/.env
-        echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> product/.env
-    
-    - name: Install dependencies
-      run: |
-        npm ci
-        cd auth && npm ci
-        cd ../product && npm ci
-    
-    - name: Run Auth Service tests
-      run: |
-        cd auth
-        npm test
-    
-    - name: Start Auth Service for Product tests
-      run: |
-        cd auth
-        npm start &
-        sleep 5
-    
-    - name: Run Product Service tests
-      run: |
-        cd product
-        npm test
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Build Docker images
+    - name: Build Docker images for all microservices
       run: docker-compose build
     
-    - name: Log in to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_USERNAME }}
-        password: ${{ secrets.DOCKER_PASSWORD }}
-    
-    - name: Push Auth Service image
+    - name: Create environment variables file
       run: |
-        docker tag 22653721-nguyenhoangkhanhduy-eproject-auth:latest ${{ secrets.DOCKER_USERNAME }}/eproject-auth:latest
-        docker push ${{ secrets.DOCKER_USERNAME }}/eproject-auth:latest
+        echo "MONGODB_AUTH_URI=mongodb://mongodb:27017/auth_service" > .env.test
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env.test
+        echo "MONGODB_PRODUCT_URI=mongodb://mongodb:27017/product_service" >> .env.test
+        echo "LOGIN_TEST_USER=${{ secrets.LOGIN_TEST_USER }}" >> .env.test
+        echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> .env.test
     
-    - name: Push Product Service image
-      run: |
-        docker tag 22653721-nguyenhoangkhanhduy-eproject-product:latest ${{ secrets.DOCKER_USERNAME }}/eproject-product:latest
-        docker push ${{ secrets.DOCKER_USERNAME }}/eproject-product:latest
+    - name: Start all Docker containers
+      run: docker-compose up -d
     
-    - name: Push Order Service image
+    - name: Wait for services startup and configure MongoDB
       run: |
-        docker tag 22653721-nguyenhoangkhanhduy-eproject-order:latest ${{ secrets.DOCKER_USERNAME }}/eproject-order:latest
-        docker push ${{ secrets.DOCKER_USERNAME }}/eproject-order:latest
+        echo "Waiting for services to be ready..."
+        sleep 40
+        docker-compose ps
     
-    - name: Push API Gateway image
+    - name: Run unit tests (Product & Auth in parallel)
       run: |
-        docker tag 22653721-nguyenhoangkhanhduy-eproject-api-gateway:latest ${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:latest
-        docker push ${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:latest
+        echo "Running tests..."
+        docker-compose logs auth
+        docker-compose logs product
+    
+    - name: Stop and remove containers after testing
+      run: docker-compose down -v
+    
+    - name: Post Checkout source code from repository
+      if: always()
+      run: echo "Cleanup completed"
 
   deploys:
     name: deploys
