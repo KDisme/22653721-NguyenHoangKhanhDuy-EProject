@@ -35,11 +35,11 @@ jobs:
     - name: Create .env files
       run: |
         echo "MONGODB_AUTH_URI=mongodb://localhost:27017/auth_service" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> product/.env
+        echo "JWT_SECRET=test_secret_key_12345" >> auth/.env
+        echo "JWT_SECRET=test_secret_key_12345" >> product/.env
         echo "MONGODB_PRODUCT_URI=mongodb://localhost:27017/product_service" >> product/.env
-        echo "LOGIN_TEST_USER=${{ secrets.LOGIN_TEST_USER }}" >> product/.env
-        echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> product/.env
+        echo "LOGIN_TEST_USER=testuser" >> product/.env
+        echo "LOGIN_TEST_PASSWORD=testpass123" >> product/.env
     
     - name: Install dependencies
       run: |
@@ -56,7 +56,14 @@ jobs:
       run: |
         cd auth
         npm start &
-        sleep 5
+        echo "Waiting for Auth Service to start..."
+        sleep 10
+        
+    - name: Register test user for Product tests
+      run: |
+        curl -X POST http://localhost:3000/register \
+          -H "Content-Type: application/json" \
+          -d '{"username":"testuser","password":"testpass123"}' || true
     
     - name: Run Product Service tests
       run: |

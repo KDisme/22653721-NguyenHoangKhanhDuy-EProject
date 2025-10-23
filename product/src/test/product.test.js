@@ -9,6 +9,7 @@ chai.use(chaiHttp);
 
 describe("Products", () => {
   let app;
+  let authToken;
 
   before(async () => {
     app = new App();
