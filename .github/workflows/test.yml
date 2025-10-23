@@ -1,5 +1,6 @@
 name: CI/CD Pipeline
-on: 
+
+on:
   push:
     branches: [ main, develop ]
   pull_request:
@@ -16,127 +17,134 @@ jobs:
         ports:
           - 27017:27017
         options: >-
-          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v3.2.0
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: '18'
-        cache: 'npm'
-
-    - name: Create .env files
-      run: |
-        echo "MONGODB_AUTH_URI=${{ secrets.MONGODB_AUTH_URI }}" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> auth/.env
-        echo "MONGODB_PRODUCT_URI=${{ secrets.MONGODB_PRODUCT_URI }}" >> product/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> product/.env
-        echo "LOGIN_TEST_USER=${{ secrets.LOGIN_TEST_USER }}" >> product/.env
-        echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> product/.env
-
-    - name: Install dependencies for auth service
-      run: |
-        cd auth
-        npm ci
-
-    - name: Install dependencies for product service
-      run: |
-        cd product
-        npm ci
-
-    - name: Install root dependencies
-      run: npm ci
-
-    - name: Run auth service tests
-      run: |
-        cd auth
-        npm test
-
-    - name: Start auth service in background
-      run: |
-        cd auth
-        npm start &
-        echo $! > auth.pid
-        sleep 5
-
-    - name: Run product service tests
-      run: |
-        cd product
-        npm test
-
-    - name: Stop auth service
-      if: always()
-      run: |
-        if [ -f auth.pid ]; then
-          kill $(cat auth.pid) || true
-        fi
-
-  build:
-    name: Build Docker Images
-    runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push'
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3.2.0
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-
-    - name: Build auth service image
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Create .env files
       run: |
-        docker build -t auth-service:${{ github.sha }} ./auth
-
-    - name: Build product service image
+        echo "MONGODB_AUTH_URI=mongodb://localhost:27017/auth_service" >> auth/.env
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> auth/.env
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> product/.env
+        echo "MONGODB_PRODUCT_URI=mongodb://localhost:27017/product_service" >> product/.env
+        echo "LOGIN_TEST_USER=${{ secrets.LOGIN_TEST_USER }}" >> product/.env
+        echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> product/.env
+    
+    - name: Install dependencies
       run: |
-        docker build -t product-service:${{ github.sha }} ./product
-
-    - name: Build order service image
+        npm ci
+        cd auth && npm ci
+        cd ../product && npm ci
+    
+    - name: Run Auth Service tests
       run: |
-        docker build -t order-service:${{ github.sha }} ./order
-
-    - name: Build api-gateway image
+        cd auth
+        npm test
+    
+    - name: Start Auth Service for Product tests
       run: |
-        docker build -t api-gateway:${{ github.sha }} ./api-gateway
+        cd auth
+        npm start &
+        sleep 5
+    
+    - name: Run Product Service tests
+      run: |
+        cd product
+        npm test
 
-  integration-test:
-    name: Integration Tests with Docker Compose
+  build:
+    name: Build and Push Docker Images
+    needs: test
     runs-on: ubuntu-latest
-    needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3.2.0
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push Auth Service
+      uses: docker/build-push-action@v5
+      with:
+        context: ./auth
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/eproject-auth:latest
+          ${{ secrets.DOCKER_USERNAME }}/eproject-auth:${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-auth:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-auth:buildcache,mode=max
+    
+    - name: Build and push Product Service
+      uses: docker/build-push-action@v5
+      with:
+        context: ./product
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/eproject-product:latest
+          ${{ secrets.DOCKER_USERNAME }}/eproject-product:${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-product:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-product:buildcache,mode=max
+    
+    - name: Build and push Order Service
+      uses: docker/build-push-action@v5
+      with:
+        context: ./order
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/eproject-order:latest
+          ${{ secrets.DOCKER_USERNAME }}/eproject-order:${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-order:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-order:buildcache,mode=max
+    
+    - name: Build and push API Gateway
+      uses: docker/build-push-action@v5
+      with:
+        context: ./api-gateway
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:latest
+          ${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:${{ github.sha }}
+        cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:buildcache
+        cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:buildcache,mode=max
 
-    - name: Start services with Docker Compose
+  deploy:
+    name: Deploy with Docker Compose
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Create deployment package
       run: |
-        docker-compose up -d
-
-    - name: Wait for services to be ready
-      run: |
-        echo "Waiting for services to start..."
-        sleep 30
-
-    - name: Check services health
-      run: |
-        docker-compose ps
-        curl -f http://localhost:3000/health || echo "Auth service health check failed"
-        curl -f http://localhost:3001/health || echo "Product service health check failed"
-
-    - name: View logs
-      if: always()
-      run: |
-        docker-compose logs
-
-    - name: Shutdown services
-      if: always()
-      run: |
-        docker-compose down -v
+        mkdir -p deploy
+        cp docker-compose.yml deploy/
+        tar -czf deploy.tar.gz deploy/
+    
+    - name: Upload deployment artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: deployment-package
+        path: deploy.tar.gz
+        retention-days: 30
