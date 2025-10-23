@@ -1,37 +1,142 @@
-name: CI
-on: [push, pull_request]
+name: CI/CD Pipeline
+on: 
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
 
 jobs:
   test:
+    name: Run Tests
     runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3.2.0
-    - name: Create .env file
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Create .env files
       run: |
-        echo "MONGODB_AUTH_URI=${{ secrets.MONGODB_PRODUCT_URI }}" >> auth/.env
+        echo "MONGODB_AUTH_URI=${{ secrets.MONGODB_AUTH_URI }}" >> auth/.env
         echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> auth/.env
-        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> product/.env
         echo "MONGODB_PRODUCT_URI=${{ secrets.MONGODB_PRODUCT_URI }}" >> product/.env
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> product/.env
         echo "LOGIN_TEST_USER=${{ secrets.LOGIN_TEST_USER }}" >> product/.env
         echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> product/.env
 
-    - name: Install dependencies
+    - name: Install dependencies for auth service
       run: |
         cd auth
         npm ci
-        cd ..
+
+    - name: Install dependencies for product service
+      run: |
         cd product
         npm ci
-        cd ..
-        npm ci
-    - name: Run tests for auth
-      run : |
+
+    - name: Install root dependencies
+      run: npm ci
+
+    - name: Run auth service tests
+      run: |
         cd auth
         npm test
-    - name: Run tests for product
+
+    - name: Start auth service in background
       run: |
-        cd auth &&
+        cd auth
         npm start &
+        echo $! > auth.pid
+        sleep 5
+
+    - name: Run product service tests
+      run: |
         cd product
         npm test
+
+    - name: Stop auth service
+      if: always()
+      run: |
+        if [ -f auth.pid ]; then
+          kill $(cat auth.pid) || true
+        fi
+
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3.2.0
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build auth service image
+      run: |
+        docker build -t auth-service:${{ github.sha }} ./auth
+
+    - name: Build product service image
+      run: |
+        docker build -t product-service:${{ github.sha }} ./product
+
+    - name: Build order service image
+      run: |
+        docker build -t order-service:${{ github.sha }} ./order
+
+    - name: Build api-gateway image
+      run: |
+        docker build -t api-gateway:${{ github.sha }} ./api-gateway
+
+  integration-test:
+    name: Integration Tests with Docker Compose
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3.2.0
+
+    - name: Start services with Docker Compose
+      run: |
+        docker-compose up -d
+
+    - name: Wait for services to be ready
+      run: |
+        echo "Waiting for services to start..."
+        sleep 30
+
+    - name: Check services health
+      run: |
+        docker-compose ps
+        curl -f http://localhost:3000/health || echo "Auth service health check failed"
+        curl -f http://localhost:3001/health || echo "Product service health check failed"
+
+    - name: View logs
+      if: always()
+      run: |
+        docker-compose logs
+
+    - name: Shutdown services
+      if: always()
+      run: |
+        docker-compose down -v
