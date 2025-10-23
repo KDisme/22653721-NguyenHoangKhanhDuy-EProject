@@ -14,7 +14,7 @@ jobs:
       uses: actions/checkout@v4
     
     - name: Build Docker images for all microservices
-      run: docker-compose build
+      run: docker compose build
     
     - name: Create environment variables file
       run: |
@@ -25,22 +25,22 @@ jobs:
         echo "LOGIN_TEST_PASSWORD=${{ secrets.LOGIN_TEST_PASSWORD }}" >> .env.test
     
     - name: Start all Docker containers
-      run: docker-compose up -d
+      run: docker compose up -d
     
     - name: Wait for services startup and configure MongoDB
       run: |
         echo "Waiting for services to be ready..."
         sleep 40
-        docker-compose ps
+        docker compose ps
     
     - name: Run unit tests (Product & Auth in parallel)
       run: |
         echo "Running tests..."
-        docker-compose logs auth
-        docker-compose logs product
+        docker compose logs auth
+        docker compose logs product
     
     - name: Stop and remove containers after testing
-      run: docker-compose down -v
+      run: docker compose down -v
     
     - name: Post Checkout source code from repository
       if: always()
