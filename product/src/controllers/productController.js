@@ -14,7 +14,6 @@ class ProductController {
 
   }
 
-
   async createProduct(req, res, next) {
     try {
       const token = req.headers.authorization;
@@ -110,7 +109,6 @@ class ProductController {
       res.status(500).json({ message: "Server error" });
     }
   }
-  
 }
 
 module.exports = ProductController;
