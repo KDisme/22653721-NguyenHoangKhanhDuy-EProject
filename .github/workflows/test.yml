@@ -1,119 +1,235 @@
-name: CI/CD 
+name: CI/CD - Microservices Dockername: CI/CD 
+
 on:
 
-on:  push:
+on:
 
-  push:    branches: [ main, develop ]
-
-    branches: [ "main" ]  pull_request:
-
-  pull_request:    branches: [ main, develop ]
+  push:on:  push:
 
     branches: [ "main" ]
 
+  pull_request:  push:    branches: [ main, develop ]
+
+    branches: [ "main" ]
+
+    branches: [ "main" ]  pull_request:
+
 jobs:
 
-jobs:  test:
+  build-and-run:  pull_request:    branches: [ main, develop ]
 
-  build-and-run:    name: Run Tests
+    runs-on: ubuntu-latest
 
-    runs-on: ubuntu-latest    runs-on: ubuntu-latest
-
-    
-
-    steps:    services:
-
-      - name: Checkout source code from repository      mongodb:
-
-        uses: actions/checkout@v4        image: mongo:6.0
-
-        ports:
-
-      - name: Build Docker images for all microservices          - 27017:27017
-
-        run: docker compose -f docker-compose.yml build --parallel        options: >-
-
-        env:          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
-
-          DOCKER_BUILDKIT: 1          --health-interval 10s
-
-          --health-timeout 5s
-
-      - name: Start all Docker containers          --health-retries 5
-
-        run: docker compose -f docker-compose.yml up -d    
+    branches: [ "main" ]
 
     steps:
 
-      - name: Wait for services to be ready    - name: Checkout code
+      - name: Checkout source code from repositoryjobs:
 
-        run: |      uses: actions/checkout@v4
+        uses: actions/checkout@v4
 
-          echo "Waiting for services to start..."    
+jobs:  test:
 
-          sleep 30    - name: Setup Node.js
+      - name: Build Docker images for all microservices
 
-          docker ps      uses: actions/setup-node@v4
+        run: docker compose -f docker-compose.yml build --parallel  build-and-run:    name: Run Tests
 
-      with:
+        env:
+
+          DOCKER_BUILDKIT: 1    runs-on: ubuntu-latest    runs-on: ubuntu-latest
+
+
+
+      - name: Start all Docker containers    
+
+        run: docker compose -f docker-compose.yml up -d
+
+    steps:    services:
+
+      - name: Wait for services to be ready
+
+        run: |      - name: Checkout source code from repository      mongodb:
+
+          echo "Waiting for services to start..."
+
+          sleep 30        uses: actions/checkout@v4        image: mongo:6.0
+
+          docker ps
+
+        ports:
+
+      - name: Check service health
+
+        run: |      - name: Build Docker images for all microservices          - 27017:27017
+
+          echo "Checking Auth Service..."
+
+          docker logs auth-service        run: docker compose -f docker-compose.yml build --parallel        options: >-
+
+          echo "Checking Product Service..."
+
+          docker logs product-service        env:          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
+
+
+
+      - name: Register test user for tests          DOCKER_BUILDKIT: 1          --health-interval 10s
+
+        run: |
+
+          sleep 10          --health-timeout 5s
+
+          curl -X POST http://localhost:3000/register \
+
+            -H "Content-Type: application/json" \      - name: Start all Docker containers          --health-retries 5
+
+            -d '{"username":"testuser","password":"testpass123"}' || true
+
+          sleep 5        run: docker compose -f docker-compose.yml up -d    
+
+
+
+      - name: Run unit tests (Product & Auth in parallel)    steps:
+
+        run: |
+
+          docker exec auth-service npm test &      - name: Wait for services to be ready    - name: Checkout code
+
+          docker exec product-service npm test &
+
+          wait        run: |      uses: actions/checkout@v4
+
+
+
+      - name: Stop and remove containers after testing          echo "Waiting for services to start..."    
+
+        if: always()
+
+        run: docker compose -f docker-compose.yml down -v          sleep 30    - name: Setup Node.js
+
+
+
+  deploys:          docker ps      uses: actions/setup-node@v4
+
+    runs-on: ubuntu-latest
+
+    needs: build-and-run      with:
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
       - name: Check service health        node-version: '18'
 
-        run: |        cache: 'npm'
+    steps:
+
+      - name: Checkout source code from repository        run: |        cache: 'npm'
+
+        uses: actions/checkout@v4
 
           echo "Checking Auth Service..."    
 
-          docker logs auth-service    - name: Create .env files
+      - name: Set up Docker Buildx
 
-          echo "Checking Product Service..."      run: |
+        uses: docker/setup-buildx-action@v3          docker logs auth-service    - name: Create .env files
 
-          docker logs product-service        echo "MONGODB_AUTH_URI=mongodb://localhost:27017/auth_service" >> auth/.env
 
-        echo "JWT_SECRET=test_secret_key_12345" >> auth/.env
 
-      - name: Register test user for tests        echo "JWT_SECRET=test_secret_key_12345" >> product/.env
+      - name: Login to Docker Hub registry          echo "Checking Product Service..."      run: |
 
-        run: |        echo "MONGODB_PRODUCT_URI=mongodb://localhost:27017/product_service" >> product/.env
+        uses: docker/login-action@v3
 
-          sleep 10        echo "LOGIN_TEST_USER=testuser" >> product/.env
+        with:          docker logs product-service        echo "MONGODB_AUTH_URI=mongodb://localhost:27017/auth_service" >> auth/.env
 
-          curl -X POST http://localhost:3000/register \        echo "LOGIN_TEST_PASSWORD=testpass123" >> product/.env
+          username: ${{ secrets.DOCKER_USERNAME }}
 
-            -H "Content-Type: application/json" \    
+          password: ${{ secrets.DOCKER_PASSWORD }}        echo "JWT_SECRET=test_secret_key_12345" >> auth/.env
+
+
+
+      - name: Build and push Auth Service      - name: Register test user for tests        echo "JWT_SECRET=test_secret_key_12345" >> product/.env
+
+        uses: docker/build-push-action@v5
+
+        with:        run: |        echo "MONGODB_PRODUCT_URI=mongodb://localhost:27017/product_service" >> product/.env
+
+          context: ./auth
+
+          push: true          sleep 10        echo "LOGIN_TEST_USER=testuser" >> product/.env
+
+          tags: |
+
+            ${{ secrets.DOCKER_USERNAME }}/auth-service:latest          curl -X POST http://localhost:3000/register \        echo "LOGIN_TEST_PASSWORD=testpass123" >> product/.env
+
+            ${{ secrets.DOCKER_USERNAME }}/auth-service:${{ github.sha }}
+
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/auth-service:buildcache            -H "Content-Type: application/json" \    
+
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/auth-service:buildcache,mode=max
 
             -d '{"username":"testuser","password":"testpass123"}' || true    - name: Install dependencies
 
-          sleep 5      run: |
+      - name: Build and push Product Service
 
-        npm ci
+        uses: docker/build-push-action@v5          sleep 5      run: |
 
-      - name: Run unit tests (Product & Auth in parallel)        cd auth && npm ci
+        with:
 
-        run: |        cd ../product && npm ci
+          context: ./product        npm ci
 
-          docker exec auth-service npm test &    
+          push: true
 
-          docker exec product-service npm test &    - name: Run Auth Service tests
+          tags: |      - name: Run unit tests (Product & Auth in parallel)        cd auth && npm ci
 
-          wait      run: |
+            ${{ secrets.DOCKER_USERNAME }}/product-service:latest
 
-        cd auth
+            ${{ secrets.DOCKER_USERNAME }}/product-service:${{ github.sha }}        run: |        cd ../product && npm ci
 
-      - name: Stop and remove containers after testing        npm test
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/product-service:buildcache
 
-        if: always()    
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/product-service:buildcache,mode=max          docker exec auth-service npm test &    
+
+
+
+      - name: Build and push Order Service          docker exec product-service npm test &    - name: Run Auth Service tests
+
+        uses: docker/build-push-action@v5
+
+        with:          wait      run: |
+
+          context: ./order
+
+          push: true        cd auth
+
+          tags: |
+
+            ${{ secrets.DOCKER_USERNAME }}/order-service:latest      - name: Stop and remove containers after testing        npm test
+
+            ${{ secrets.DOCKER_USERNAME }}/order-service:${{ github.sha }}
+
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/order-service:buildcache        if: always()    
+
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/order-service:buildcache,mode=max
 
         run: docker compose -f docker-compose.yml down -v    - name: Start Auth Service for Product tests
 
-      run: |
+      - name: Build and push API Gateway
 
-  deploys:        cd auth
+        uses: docker/build-push-action@v5      run: |
 
-    runs-on: ubuntu-latest        npm start &
+        with:
 
-    needs: build-and-run        echo "Waiting for Auth Service to start..."
+          context: ./api-gateway  deploys:        cd auth
 
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'        sleep 10
+          push: true
+
+          tags: |    runs-on: ubuntu-latest        npm start &
+
+            ${{ secrets.DOCKER_USERNAME }}/api-gateway:latest
+
+            ${{ secrets.DOCKER_USERNAME }}/api-gateway:${{ github.sha }}    needs: build-and-run        echo "Waiting for Auth Service to start..."
+
+          cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/api-gateway:buildcache
+
+          cache-to: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/api-gateway:buildcache,mode=max    if: github.event_name == 'push' && github.ref == 'refs/heads/main'        sleep 10
+
 
         
 
