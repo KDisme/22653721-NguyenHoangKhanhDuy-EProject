@@ -36,8 +36,8 @@ jobs:
     - name: Run unit tests (Product & Auth in parallel)
       run: |
         echo "Running tests..."
-        docker compose logs auth
-        docker compose logs product
+        docker exec product_service npm test &
+        docker exec auth_service npm test &
     
     - name: Stop and remove containers after testing
       run: docker compose down -v
