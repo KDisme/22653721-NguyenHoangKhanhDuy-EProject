@@ -34,71 +34,95 @@ jobs:
         echo "Waiting for services to be ready..."
         sleep 40
         docker compose ps
+        
+        echo "Waiting for auth service to be ready..."
+        for i in {1..30}; do
+          if docker logs auth-service 2>&1 | grep -q "Server started on port"; then
+            echo "✓ Auth service is ready"
+            break
+          fi
+          echo "Waiting for auth service... attempt $i/30"
+          sleep 2
+        done
+        
+        echo "Auth service logs:"
+        docker logs auth-service --tail 20
     
     - name: Create test user in auth service
       run: |
         echo "Creating test user via API..."
-        sleep 10
         
-        # Đầu tiên thử xóa user cũ nếu tồn tại (có thể fail nếu chưa có, không sao)
-        docker exec mongodb mongosh auth_service --eval "db.users.deleteOne({username: 'testuser'})" || true
+        # Đầu tiên thử xóa user cũ nếu tồn tại
+        echo "Cleaning up old test user..."
+        docker exec mongodb mongosh auth_service --quiet --eval "db.users.deleteOne({username: 'testuser'})" || true
         
-        # Tạo user mới qua API register
-        docker exec auth-service node -e "
-        const http = require('http');
-        
-        const data = JSON.stringify({
-          username: 'testuser',
-          password: '123456',
-          email: 'test@test.com'
-        });
-        
-        const options = {
-          hostname: 'localhost',
-          port: 3000,
-          path: '/register',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': data.length
-          }
-        };
-        
-        const req = http.request(options, (res) => {
-          let responseData = '';
+        echo "Registering new test user..."
+        # Tạo user mới qua API register với retry
+        for i in {1..5}; do
+          echo "Registration attempt $i/5..."
           
-          res.on('data', (chunk) => {
-            responseData += chunk;
+          RESULT=$(docker exec auth-service node -e "
+          const http = require('http');
+          
+          const data = JSON.stringify({
+            username: 'testuser',
+            password: '123456',
+            email: 'test@test.com'
           });
           
-          res.on('end', () => {
-            console.log('Register response status:', res.statusCode);
-            console.log('Register response body:', responseData);
+          const options = {
+            hostname: 'localhost',
+            port: 3000,
+            path: '/register',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': data.length
+            }
+          };
+          
+          const req = http.request(options, (res) => {
+            let responseData = '';
             
-            if (res.statusCode === 200) {
-              const body = JSON.parse(responseData);
-              if (body.username === 'testuser') {
-                console.log('✓ User registered successfully');
-                process.exit(0);
+            res.on('data', (chunk) => {
+              responseData += chunk;
+            });
+            
+            res.on('end', () => {
+              console.log('Register response status:', res.statusCode);
+              console.log('Register response body:', responseData);
+              
+              if (res.statusCode === 200) {
+                const body = JSON.parse(responseData);
+                if (body.username === 'testuser') {
+                  console.log('✓ User registered successfully');
+                  process.exit(0);
+                } else {
+                  console.error('✗ Unexpected response');
+                  process.exit(1);
+                }
               } else {
-                console.error('✗ Unexpected response');
+                console.error('✗ Registration failed with status:', res.statusCode);
                 process.exit(1);
               }
-            } else {
-              console.error('✗ Registration failed with status:', res.statusCode);
-              process.exit(1);
-            }
+            });
           });
-        });
+          
+          req.on('error', (error) => {
+            console.error('Error:', error);
+            process.exit(1);
+          });
+          
+          req.write(data);
+          req.end();
+          " 2>&1) && break || {
+            echo "Registration failed, retrying..."
+            sleep 3
+          }
+        done
         
-        req.on('error', (error) => {
-          console.error('Error:', error);
-          process.exit(1);
-        });
-        
-        req.write(data);
-        req.end();
-        "
+        echo "$RESULT"
+        echo "$RESULT" | grep -q "✓ User registered successfully" || exit 1
     
     - name: Verify test user can login
       run: |
