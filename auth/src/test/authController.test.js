@@ -14,16 +14,11 @@ describe("User Authentication", () => {
     // Sử dụng port 3005 cho testing để tránh conflict với service đang chạy
     app = new App(3005);
     await app.connectDB();
-    
-    // Xóa tất cả test users trước khi chạy tests
-    await app.authController.authService.deleteTestUsers();
-    
     app.start();
   });
 
   after(async () => {
-    // Xóa test users sau khi test xong
-    await app.authController.authService.deleteTestUsers();
+    // Không xóa test users để product tests có thể sử dụng
     await app.disconnectDB();
     app.stop();
   });
@@ -33,18 +28,18 @@ describe("User Authentication", () => {
       const res = await chai
         .request(app.app)
         .post("/register")
-        .send({ username: "testuser_new", password: "password" });
+        .send({ username: "testuser", password: "123456" });
 
       expect(res).to.have.status(200);
       expect(res.body).to.have.property("_id");
-      expect(res.body).to.have.property("username", "testuser_new");
+      expect(res.body).to.have.property("username", "testuser");
     });
 
     it("should return an error if the username is already taken", async () => {
       const res = await chai
         .request(app.app)
         .post("/register")
-        .send({ username: "testuser_new", password: "password" });
+        .send({ username: "testuser", password: "123456" });
 
       expect(res).to.have.status(400);
       expect(res.body).to.have.property("message", "Username already taken");
@@ -56,7 +51,7 @@ describe("User Authentication", () => {
       const res = await chai
         .request(app.app)
         .post("/login")
-        .send({ username: "testuser_new", password: "password" });
+        .send({ username: "testuser", password: "123456" });
 
       expect(res).to.have.status(200);
       expect(res.body).to.have.property("token");
@@ -66,7 +61,7 @@ describe("User Authentication", () => {
       const res = await chai
         .request(app.app)
         .post("/login")
-        .send({ username: "invaliduser", password: "password" });
+        .send({ username: "invaliduser", password: "123456" });
 
       expect(res).to.have.status(400);
       expect(res.body).to.have.property("message", "Invalid username or password");
@@ -76,7 +71,7 @@ describe("User Authentication", () => {
       const res = await chai
         .request(app.app)
         .post("/login")
-        .send({ username: "testuser_new", password: "wrongpassword" });
+        .send({ username: "testuser", password: "wrongpassword" });
 
       expect(res).to.have.status(400);
       expect(res.body).to.have.property("message", "Invalid username or password");

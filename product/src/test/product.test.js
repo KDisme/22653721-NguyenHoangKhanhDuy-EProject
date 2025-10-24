@@ -86,23 +86,17 @@ describe("Products", () => {
 
   // before chạy trc
   before(async () => {
-    console.log(`Attempting to login at ${AUTH_SERVICE_URL}/login`);
-    
     // Login để lấy token từ Auth service đang chạy
     const authRes = await chai
       .request(AUTH_SERVICE_URL)
       .post("/login")
       .send({ username: "testuser", password: "123456" });
     
-    console.log('Login response status:', authRes.status);
-    console.log('Login response body:', authRes.body);
-    
     if (authRes.status !== 200 || !authRes.body.token) {
       throw new Error(`Login failed: ${JSON.stringify(authRes.body)}`);
     }
     
     authToken = authRes.body.token;
-    console.log('Auth token received:', authToken ? 'Yes' : 'No');
 
     // thêm trước 1 product
     await chai

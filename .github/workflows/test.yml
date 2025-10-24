@@ -29,168 +29,23 @@ jobs:
     - name: Start all Docker containers
       run: docker compose up -d
     
-    - name: Wait for services startup and configure MongoDB
+    - name: Wait for services startup
       run: |
         echo "Waiting for services to be ready..."
-        sleep 40
+        sleep 45
         docker compose ps
-        
-        echo "Waiting for auth service to be ready..."
-        for i in {1..30}; do
-          if docker logs auth-service 2>&1 | grep -q "Server started on port"; then
-            echo "✓ Auth service is ready"
-            break
-          fi
-          echo "Waiting for auth service... attempt $i/30"
-          sleep 2
-        done
-        
-        echo "Auth service logs:"
-        docker logs auth-service --tail 20
-    
-    - name: Create test user in auth service
-      run: |
-        echo "Creating test user via API..."
-        
-        # Đầu tiên thử xóa user cũ nếu tồn tại
-        echo "Cleaning up old test user..."
-        docker exec mongodb mongosh auth_service --quiet --eval "db.users.deleteOne({username: 'testuser'})" || true
-        
-        echo "Registering new test user..."
-        # Tạo user mới qua API register với retry
-        for i in {1..5}; do
-          echo "Registration attempt $i/5..."
-          
-          RESULT=$(docker exec auth-service node -e "
-          const http = require('http');
-          
-          const data = JSON.stringify({
-            username: 'testuser',
-            password: '123456',
-            email: 'test@test.com'
-          });
-          
-          const options = {
-            hostname: 'localhost',
-            port: 3000,
-            path: '/register',
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Content-Length': data.length
-            }
-          };
-          
-          const req = http.request(options, (res) => {
-            let responseData = '';
-            
-            res.on('data', (chunk) => {
-              responseData += chunk;
-            });
-            
-            res.on('end', () => {
-              console.log('Register response status:', res.statusCode);
-              console.log('Register response body:', responseData);
-              
-              if (res.statusCode === 200) {
-                const body = JSON.parse(responseData);
-                if (body.username === 'testuser') {
-                  console.log('✓ User registered successfully');
-                  process.exit(0);
-                } else {
-                  console.error('✗ Unexpected response');
-                  process.exit(1);
-                }
-              } else {
-                console.error('✗ Registration failed with status:', res.statusCode);
-                process.exit(1);
-              }
-            });
-          });
-          
-          req.on('error', (error) => {
-            console.error('Error:', error);
-            process.exit(1);
-          });
-          
-          req.write(data);
-          req.end();
-          " 2>&1) && break || {
-            echo "Registration failed, retrying..."
-            sleep 3
-          }
-        done
-        
-        echo "$RESULT"
-        echo "$RESULT" | grep -q "✓ User registered successfully" || exit 1
-    
-    - name: Verify test user can login
-      run: |
-        echo "Testing login endpoint..."
-        docker exec auth-service node -e "
-        const http = require('http');
-        
-        const data = JSON.stringify({
-          username: 'testuser',
-          password: '123456'
-        });
-        
-        const options = {
-          hostname: 'localhost',
-          port: 3000,
-          path: '/login',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': data.length
-          }
-        };
-        
-        const req = http.request(options, (res) => {
-          let responseData = '';
-          
-          res.on('data', (chunk) => {
-            responseData += chunk;
-          });
-          
-          res.on('end', () => {
-            console.log('Login response status:', res.statusCode);
-            console.log('Login response body:', responseData);
-            
-            if (res.statusCode === 200) {
-              const body = JSON.parse(responseData);
-              if (body.token) {
-                console.log('✓ Login successful, token received');
-                process.exit(0);
-              } else {
-                console.error('✗ No token in response');
-                process.exit(1);
-              }
-            } else {
-              console.error('✗ Login failed with status:', res.statusCode);
-              process.exit(1);
-            }
-          });
-        });
-        
-        req.on('error', (error) => {
-          console.error('Error:', error);
-          process.exit(1);
-        });
-        
-        req.write(data);
-        req.end();
-        "
-    
-    - name: Run unit tests (product)
-      run: |
-        echo "Running product service tests..."
-        docker exec -e AUTH_SERVICE_URL=http://auth-service:3000 -e PRODUCT_SERVICE_URL=http://product-service:3001 product-service npm test
+        echo "Checking service logs..."
+        docker logs auth-service --tail 10
     
     - name: Run unit tests (auth)
       run: |
         echo "Running auth service tests..."
         docker exec -e MONGODB_AUTH_URI=mongodb://mongodb:27017/auth_service auth-service npm test
+    
+    - name: Run unit tests (product)
+      run: |
+        echo "Running product service tests..."
+        docker exec -e AUTH_SERVICE_URL=http://auth-service:3000 -e PRODUCT_SERVICE_URL=http://product-service:3001 product-service npm test
 
     - name: Stop and remove containers after testing
       run: docker compose down -v
