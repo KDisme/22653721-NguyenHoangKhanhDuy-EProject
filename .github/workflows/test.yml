@@ -182,15 +182,15 @@ jobs:
         req.end();
         "
     
-    - name: Run unit tests (auth)
-      run: |
-        echo "Running auth service tests..."
-        docker exec -e MONGODB_AUTH_URI=mongodb://mongodb:27017/auth_service auth-service npm test
-    
     - name: Run unit tests (product)
       run: |
         echo "Running product service tests..."
         docker exec -e AUTH_SERVICE_URL=http://auth-service:3000 -e PRODUCT_SERVICE_URL=http://product-service:3001 product-service npm test
+    
+    - name: Run unit tests (auth)
+      run: |
+        echo "Running auth service tests..."
+        docker exec -e MONGODB_AUTH_URI=mongodb://mongodb:27017/auth_service auth-service npm test
 
     - name: Stop and remove containers after testing
       run: docker compose down -v
