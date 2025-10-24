@@ -37,49 +37,67 @@ jobs:
     
     - name: Create test user in auth service
       run: |
-        echo "Creating test user..."
-        sleep 5
-        docker exec auth-service node -e "
-        const mongoose = require('mongoose');
-        const bcrypt = require('bcryptjs');
+        echo "Creating test user via API..."
+        sleep 10
         
-        (async () => {
-          try {
-            await mongoose.connect('mongodb://mongodb:27017/auth_service');
-            console.log('Connected to MongoDB');
-            
-            const UserSchema = new mongoose.Schema({
-              username: { type: String, required: true, unique: true },
-              password: { type: String, required: true },
-              email: String
-            });
-            
-            const User = mongoose.model('User', UserSchema);
-            
-            // Xóa user cũ nếu tồn tại
-            await User.deleteOne({ username: 'testuser' });
-            console.log('Cleaned up old test user if existed');
-            
-            // Tạo user mới
-            const hashedPassword = await bcrypt.hash('123456', 10);
-            const newUser = await User.create({
-              username: 'testuser',
-              password: hashedPassword,
-              email: 'test@test.com'
-            });
-            console.log('Test user created successfully with ID:', newUser._id);
-            
-            // Verify user exists
-            const verifyUser = await User.findOne({ username: 'testuser' });
-            console.log('Verification - User exists:', !!verifyUser);
-            
-            await mongoose.disconnect();
-            process.exit(0);
-          } catch (error) {
-            console.error('Error:', error);
-            process.exit(1);
+        # Đầu tiên thử xóa user cũ nếu tồn tại (có thể fail nếu chưa có, không sao)
+        docker exec mongodb mongosh auth_service --eval "db.users.deleteOne({username: 'testuser'})" || true
+        
+        # Tạo user mới qua API register
+        docker exec auth-service node -e "
+        const http = require('http');
+        
+        const data = JSON.stringify({
+          username: 'testuser',
+          password: '123456',
+          email: 'test@test.com'
+        });
+        
+        const options = {
+          hostname: 'localhost',
+          port: 3000,
+          path: '/register',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': data.length
           }
-        })();
+        };
+        
+        const req = http.request(options, (res) => {
+          let responseData = '';
+          
+          res.on('data', (chunk) => {
+            responseData += chunk;
+          });
+          
+          res.on('end', () => {
+            console.log('Register response status:', res.statusCode);
+            console.log('Register response body:', responseData);
+            
+            if (res.statusCode === 200) {
+              const body = JSON.parse(responseData);
+              if (body.username === 'testuser') {
+                console.log('✓ User registered successfully');
+                process.exit(0);
+              } else {
+                console.error('✗ Unexpected response');
+                process.exit(1);
+              }
+            } else {
+              console.error('✗ Registration failed with status:', res.statusCode);
+              process.exit(1);
+            }
+          });
+        });
+        
+        req.on('error', (error) => {
+          console.error('Error:', error);
+          process.exit(1);
+        });
+        
+        req.write(data);
+        req.end();
         "
     
     - name: Verify test user can login
