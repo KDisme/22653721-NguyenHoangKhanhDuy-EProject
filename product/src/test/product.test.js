@@ -76,6 +76,9 @@ require("dotenv").config();
 
 chai.use(chaiHttp);
 
+// Sử dụng biến môi trường để có thể test trong Docker hoặc local
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:3000";
+const PRODUCT_SERVICE_URL = process.env.PRODUCT_SERVICE_URL || "http://localhost:3001";
 
 describe("Products", () => {
   let authToken;
@@ -85,7 +88,7 @@ describe("Products", () => {
   before(async () => {
     // Login để lấy token từ Auth service đang chạy
     const authRes = await chai
-      .request("http://localhost:3000")
+      .request(AUTH_SERVICE_URL)
       .post("/login")
       .send({ username: "testuser", password: "123456" });
     
@@ -93,7 +96,7 @@ describe("Products", () => {
 
     // thêm trước 1 product
     await chai
-      .request('http://localhost:3001')
+      .request(PRODUCT_SERVICE_URL)
       .post("/api/products")
       .set("authorization", `Bearer ${authToken}`)
       .send({
@@ -103,7 +106,7 @@ describe("Products", () => {
       });
 
     await chai
-      .request('http://localhost:3001')
+      .request(PRODUCT_SERVICE_URL)
       .post("/api/products")
       .set("authorization", `Bearer ${authToken}`)
       .send({
@@ -114,7 +117,7 @@ describe("Products", () => {
 
     // lay cac product co san de test !!!
     listProduct = await chai
-      .request('http://localhost:3001')
+      .request(PRODUCT_SERVICE_URL)
       .get("/api/products")
       .set("authorization", `Bearer ${authToken}`)
   });
@@ -134,7 +137,7 @@ describe("Products", () => {
 
       // khúc này là gửi request như postman
       const res = await chai
-        .request('http://localhost:3001')
+        .request(PRODUCT_SERVICE_URL)
         .post("/api/products")
         .set("authorization", `Bearer ${authToken}`)
         .send({
@@ -160,7 +163,7 @@ describe("Products", () => {
       };
       // gửi dữ liệu 
       const res = await chai
-        .request('http://localhost:3001')
+        .request(PRODUCT_SERVICE_URL)
         .post("/api/products")
         .set("authorization", `Bearer ${authToken}`)
         .send(product);
@@ -174,7 +177,7 @@ describe("Products", () => {
     it("get all product", async () => {
 
       const res = await chai
-        .request('http://localhost:3001')
+        .request(PRODUCT_SERVICE_URL)
         .get("/api/products")
         .set("authorization", `Bearer ${authToken}`)
 
@@ -199,7 +202,7 @@ describe("Products", () => {
       console.log(listProduct.body)
 
       const res = await chai
-        .request('http://localhost:3001')
+        .request(PRODUCT_SERVICE_URL)
         .post("/api/products/buy")
         .set("authorization", `Bearer ${authToken}`)
         .send(

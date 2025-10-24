@@ -35,10 +35,55 @@ jobs:
         sleep 40
         docker compose ps
     
+    - name: Create test user in auth service
+      run: |
+        echo "Creating test user..."
+        sleep 5
+        docker exec auth-service node -e "
+        const mongoose = require('mongoose');
+        const bcrypt = require('bcryptjs');
+        
+        (async () => {
+          try {
+            await mongoose.connect('mongodb://mongodb:27017/auth_service');
+            console.log('Connected to MongoDB');
+            
+            const UserSchema = new mongoose.Schema({
+              username: { type: String, required: true, unique: true },
+              password: { type: String, required: true },
+              email: String
+            });
+            
+            const User = mongoose.model('User', UserSchema);
+            
+            // Kiểm tra user đã tồn tại chưa
+            const existingUser = await User.findOne({ username: 'testuser' });
+            
+            if (!existingUser) {
+              const hashedPassword = await bcrypt.hash('123456', 10);
+              await User.create({
+                username: 'testuser',
+                password: hashedPassword,
+                email: 'test@test.com'
+              });
+              console.log('Test user created successfully');
+            } else {
+              console.log('Test user already exists');
+            }
+            
+            await mongoose.disconnect();
+            process.exit(0);
+          } catch (error) {
+            console.error('Error:', error);
+            process.exit(1);
+          }
+        })();
+        "
+    
     - name: Run unit tests (product)
       run: |
         echo "Running tests..."
-        docker exec product-service npm test
+        docker exec -e AUTH_SERVICE_URL=http://auth-service:3000 -e PRODUCT_SERVICE_URL=http://product-service:3001 product-service npm test
 
     - name: Stop and remove containers after testing
       run: docker compose down -v
