@@ -5,8 +5,9 @@ const authMiddleware = require("./middlewares/authMiddleware");
 const AuthController = require("./controllers/authController");
 
 class App {
-  constructor() {
+  constructor(port = 3000) {
     this.app = express();
+    this.port = port;
     this.authController = new AuthController();
     this.connectDB();
     this.setMiddlewares();
@@ -38,7 +39,7 @@ class App {
   }
 
   start() {
-    this.server = this.app.listen(3000, () => console.log("Server started on port 3000"));
+    this.server = this.app.listen(this.port, () => console.log(`Server started on port ${this.port}`));
   }
 
   async stop() {

@@ -11,7 +11,8 @@ describe("User Authentication", () => {
   let app;
 
   before(async () => {
-    app = new App();
+    // Sử dụng port 3005 cho testing để tránh conflict với service đang chạy
+    app = new App(3005);
     await app.connectDB();
     app.start();
   });
