@@ -56,20 +56,22 @@ jobs:
             
             const User = mongoose.model('User', UserSchema);
             
-            // Kiểm tra user đã tồn tại chưa
-            const existingUser = await User.findOne({ username: 'testuser' });
+            // Xóa user cũ nếu tồn tại
+            await User.deleteOne({ username: 'testuser' });
+            console.log('Cleaned up old test user if existed');
             
-            if (!existingUser) {
-              const hashedPassword = await bcrypt.hash('123456', 10);
-              await User.create({
-                username: 'testuser',
-                password: hashedPassword,
-                email: 'test@test.com'
-              });
-              console.log('Test user created successfully');
-            } else {
-              console.log('Test user already exists');
-            }
+            // Tạo user mới
+            const hashedPassword = await bcrypt.hash('123456', 10);
+            const newUser = await User.create({
+              username: 'testuser',
+              password: hashedPassword,
+              email: 'test@test.com'
+            });
+            console.log('Test user created successfully with ID:', newUser._id);
+            
+            // Verify user exists
+            const verifyUser = await User.findOne({ username: 'testuser' });
+            console.log('Verification - User exists:', !!verifyUser);
             
             await mongoose.disconnect();
             process.exit(0);
@@ -78,6 +80,64 @@ jobs:
             process.exit(1);
           }
         })();
+        "
+    
+    - name: Verify test user can login
+      run: |
+        echo "Testing login endpoint..."
+        docker exec auth-service node -e "
+        const http = require('http');
+        
+        const data = JSON.stringify({
+          username: 'testuser',
+          password: '123456'
+        });
+        
+        const options = {
+          hostname: 'localhost',
+          port: 3000,
+          path: '/login',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': data.length
+          }
+        };
+        
+        const req = http.request(options, (res) => {
+          let responseData = '';
+          
+          res.on('data', (chunk) => {
+            responseData += chunk;
+          });
+          
+          res.on('end', () => {
+            console.log('Login response status:', res.statusCode);
+            console.log('Login response body:', responseData);
+            
+            if (res.statusCode === 200) {
+              const body = JSON.parse(responseData);
+              if (body.token) {
+                console.log('✓ Login successful, token received');
+                process.exit(0);
+              } else {
+                console.error('✗ No token in response');
+                process.exit(1);
+              }
+            } else {
+              console.error('✗ Login failed with status:', res.statusCode);
+              process.exit(1);
+            }
+          });
+        });
+        
+        req.on('error', (error) => {
+          console.error('Error:', error);
+          process.exit(1);
+        });
+        
+        req.write(data);
+        req.end();
         "
     
     - name: Run unit tests (auth)
