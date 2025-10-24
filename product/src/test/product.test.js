@@ -71,7 +71,6 @@
 // });
 const chai = require("chai");
 const chaiHttp = require("chai-http");
-const App = require("../app");
 const expect = chai.expect;
 require("dotenv").config();
 
@@ -79,52 +78,49 @@ chai.use(chaiHttp);
 
 
 describe("Products", () => {
-  // let app;
   let authToken;
   let listProduct;
 
   // before chạy trc
   before(async () => {
-
+    // Login để lấy token từ Auth service đang chạy
     const authRes = await chai
-      .request("http://localhost:3003")
-      .post("/auth/login")
+      .request("http://localhost:3000")
+      .post("/login")
       .send({ username: "testuser", password: "123456" });
-    // console.log(authRes.body, '  my token');
+    
     authToken = authRes.body?.token || '';
 
     // thêm trước 1 product
     await chai
-      .request('http://localhost:3003')
-      .post("/products/api/products")
+      .request('http://localhost:3001')
+      .post("/api/products")
       .set("authorization", `Bearer ${authToken}`)
       .send({
         name: "Product 8989",
         price: 100000,
         description: "Description of Product 8989",
-        // quantity: 100
       });
 
     await chai
-      .request('http://localhost:3003')
-      .post("/products/api/products")
+      .request('http://localhost:3001')
+      .post("/api/products")
       .set("authorization", `Bearer ${authToken}`)
       .send({
         name: "Product 9898",
         price: 100000,
         description: "Description of Product 9898",
-        // quantity: 100
       });
 
     // lay cac product co san de test !!!
     listProduct = await chai
-      .request('http://localhost:3003')
-      .get("/products/api/products")
+      .request('http://localhost:3001')
+      .get("/api/products")
       .set("authorization", `Bearer ${authToken}`)
   });
 
   after(async () => {
-    console.log('complete !!!!')
+    console.log('complete !!!!');
   });
 
   // sẽ chạy sau khi before chạy xong
@@ -134,19 +130,17 @@ describe("Products", () => {
         name: "Product 1",
         description: "Description of Product 1",
         price: 10,
-        // quantity: 100
       };
 
       // khúc này là gửi request như postman
       const res = await chai
-        .request('http://localhost:3003')
-        .post("/products/api/products")
+        .request('http://localhost:3001')
+        .post("/api/products")
         .set("authorization", `Bearer ${authToken}`)
         .send({
           name: "Product 1",
           price: 10,
           description: "Description of Product 1",
-          // quantity: 100
         });
 
       // khúc này là thực hiện việc kiểm tra
@@ -166,8 +160,8 @@ describe("Products", () => {
       };
       // gửi dữ liệu 
       const res = await chai
-        .request('http://localhost:3003')
-        .post("/products/api/products")
+        .request('http://localhost:3001')
+        .post("/api/products")
         .set("authorization", `Bearer ${authToken}`)
         .send(product);
       // test
@@ -180,8 +174,8 @@ describe("Products", () => {
     it("get all product", async () => {
 
       const res = await chai
-        .request('http://localhost:3003')
-        .get("/products/api/products")
+        .request('http://localhost:3001')
+        .get("/api/products")
         .set("authorization", `Bearer ${authToken}`)
 
 
@@ -205,8 +199,8 @@ describe("Products", () => {
       console.log(listProduct.body)
 
       const res = await chai
-        .request('http://localhost:3003')
-        .post("/products/api/products/buy")
+        .request('http://localhost:3001')
+        .post("/api/products/buy")
         .set("authorization", `Bearer ${authToken}`)
         .send(
           {
