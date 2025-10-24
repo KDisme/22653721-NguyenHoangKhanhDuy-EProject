@@ -34,9 +34,7 @@ jobs:
         echo "Waiting for services to be ready..."
         sleep 45
         docker compose ps
-        echo "Checking service logs..."
-        docker logs auth-service --tail 10
-    
+  
     - name: Run unit tests (auth)
       run: |
         echo "Running auth service tests..."
