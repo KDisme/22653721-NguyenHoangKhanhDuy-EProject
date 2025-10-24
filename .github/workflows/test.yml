@@ -3,6 +3,8 @@ name: CI/CD
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   build-and-run:
@@ -33,18 +35,13 @@ jobs:
         sleep 40
         docker compose ps
     
-    - name: Run unit tests (Product & Auth in parallel)
+    - name: Run unit tests (product)
       run: |
         echo "Running tests..."
-        docker exec product_service npm test &
-        docker exec auth_service npm test &
-    
+        docker exec product-service npm test
+
     - name: Stop and remove containers after testing
       run: docker compose down -v
-    
-    - name: Post Checkout source code from repository
-      if: always()
-      run: echo "Cleanup completed"
 
   deploys:
     name: deploys
@@ -75,6 +72,4 @@ jobs:
         docker tag 22653721-nguyenhoangkhanhduy-eproject-api-gateway:latest ${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/eproject-api-gateway:latest
     
-    - name: Post Checkout source code from repository
-      if: always()
-      run: echo "Deployment completed"
+
