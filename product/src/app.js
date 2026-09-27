@@ -1,25 +1,19 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const config = require("./config");
-const MessageBroker = require("./utils/messageBroker");
 const productsRouter = require("./routes/productRoutes");
 require("dotenv").config();
 
 class App {
   constructor() {
     this.app = express();
-    this.connectDB();
     this.setMiddlewares();
     this.setRoutes();
-    this.setupMessageBroker();
   }
 
   async connectDB() {
-    await mongoose.connect(config.mongoURI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-    console.log("MongoDB connected");
+    await mongoose.connect(config.mongoURI);
+    console.log("MongoDB connected:", config.mongoURI);
   }
 
   async disconnectDB() {
@@ -33,22 +27,28 @@ class App {
   }
 
   setRoutes() {
+    // Health check endpoint (dùng cho Docker healthcheck)
+    this.app.get("/health", async (req, res) => {
+      const dbState = mongoose.connection.readyState;
+      // 1 = connected
+      if (dbState === 1) {
+        return res.status(200).json({ status: "ok", db: "connected" });
+      }
+      return res.status(503).json({ status: "error", db: "disconnected" });
+    });
+
     this.app.use("/api/products", productsRouter);
   }
 
-  setupMessageBroker() {
-    MessageBroker.connect();
-  }
-
   start() {
-    this.server = this.app.listen(3001, () =>
-      console.log("Server started on port 3001")
+    this.server = this.app.listen(config.port, () =>
+      console.log(`Server started on port ${config.port}`)
     );
   }
 
   async stop() {
-    await mongoose.disconnect();
-    this.server.close();
+    await this.disconnectDB();
+    if (this.server) this.server.close();
     console.log("Server stopped");
   }
 }

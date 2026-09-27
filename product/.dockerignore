@@ -1,11 +1,7 @@
 node_modules
-npm-debug.log
+npm-debug.log*
 .env
+*.env
 .git
 .gitignore
 README.md
-.DS_Store
-
-.vscode
-coverage
-.nyc_output
