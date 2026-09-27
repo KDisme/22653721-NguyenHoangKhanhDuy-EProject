@@ -1,174 +1,300 @@
-# EProject - Microservices E-Commerce Platform
+﻿# 🛒 product-api
 
-## � Giới thiệu
+RESTful API CRUD cho **Product** (pid, pname, price, quantity) được xây dựng bằng **Node.js + Express + MongoDB**, hỗ trợ Docker và CI/CD qua GitHub Actions + Docker Hub.
 
-Dự án này là một nền tảng thương mại điện tử được xây dựng theo kiến trúc microservices, sử dụng Node.js, Express, MongoDB và RabbitMQ. Mỗi chức năng chính được tách thành một service độc lập, giao tiếp qua API Gateway và Message Broker.
+---
 
-## 🏗️ Kiến trúc hệ thống
+## 📋 Mục lục
 
-- **API Gateway** (`api-gateway` - port 3003): Định tuyến request từ client đến các service, reverse proxy.
-- **Auth Service** (`auth` - port 3000): Xác thực, đăng ký, đăng nhập, quản lý JWT.
-- **Product Service** (`product` - port 3001): CRUD sản phẩm, tạo đơn hàng, giao tiếp với Order Service qua RabbitMQ.
-- **Order Service** (`order` - port 3002): Xử lý đơn hàng, consume message từ RabbitMQ.
+- [Yêu cầu cài đặt](#-yêu-cầu-cài-đặt)
+- [Cấu trúc thư mục](#-cấu-trúc-thư-mục)
+- [Cách 1 – Chạy bằng Docker Compose (Khuyến nghị)](#-cách-1--chạy-bằng-docker-compose-khuyến-nghị)
+- [Cách 2 – Chạy Local (không dùng Docker)](#-cách-2--chạy-local-không-dùng-docker)
+- [Cách 3 – Chạy Production từ Docker Hub](#-cách-3--chạy-production-từ-docker-hub)
+- [API Endpoints](#-api-endpoints)
+- [Chạy Tests](#-chạy-tests)
+- [CI/CD Pipeline](#-cicd-pipeline)
+- [Setup Secrets cho GitHub Actions](#-setup-secrets-cho-github-actions)
 
-**Message Broker:** RabbitMQ (queues: `orders`, `products`)  
-**Database:** Mỗi service sử dụng một MongoDB riêng biệt.
+---
+
+## 🔧 Yêu cầu cài đặt
+
+Cài các công cụ sau trước khi bắt đầu:
+
+| Công cụ | Phiên bản tối thiểu | Link tải |
+|---|---|---|
+| Git | bất kỳ | https://git-scm.com |
+| Node.js | >= 18 | https://nodejs.org |
+| Docker Desktop | bất kỳ | https://www.docker.com/products/docker-desktop |
+| VS Code | bất kỳ | https://code.visualstudio.com |
+
+> **VS Code Extensions nên cài:** Docker, GitLens, REST Client
+
+---
 
 ## 📁 Cấu trúc thư mục
 
 ```
-EProject/
-│
-├── api-gateway/
-│   ├── Dockerfile
-│   ├── index.js
-│   └── package.json
-│
-├── auth/
-│   ├── Dockerfile
-│   ├── index.js
-│   ├── package.json
-│   └── src/
-│       ├── app.js
-│       ├── config/
-│       ├── controllers/
-│       ├── middlewares/
-│       ├── models/
-│       ├── repositories/
-│       ├── services/
-│       └── test/
+product-api/
+├── .github/
+│   └── workflows/
+│       ├── test-productci.yml        # CI đơn giản (Docker Compose)
+│       ├── test-productci-prod.yml   # CI production (MongoDB service GitHub VM)
+│       ├── cd-dockerhub.yml          # CD - build & push image lên Docker Hub
+│       └── cd-deploy-local.yml       # CD - tự động deploy về local
 │
 ├── product/
-│   ├── Dockerfile
-│   ├── index.js
+│   ├── Dockerfile                    # Dockerize product-api
+│   ├── .dockerignore
+│   ├── index.js                      # Entry point
 │   ├── package.json
 │   └── src/
-│       ├── app.js
-│       ├── config.js
-│       ├── controllers/
-│       ├── models/
-│       ├── repositories/
-│       ├── routes/
-│       ├── services/
-│       ├── test/
+│       ├── app.js                    # Express app (routes, middleware, DB)
+│       ├── config.js                 # Cấu hình port, mongoURI từ .env
+│       ├── controllers/              # Xử lý request/response
+│       ├── models/product.js         # Mongoose schema (pid, pname, price, quantity)
+│       ├── repositories/             # Tầng truy cập DB
+│       ├── routes/productRoutes.js   # Định nghĩa CRUD routes
+│       ├── services/                 # Business logic
+│       ├── test/product.test.js      # Mocha/Chai CRUD tests
 │       └── utils/
 │
-├── order/
-│   ├── Dockerfile
-│   ├── index.js
-│   ├── package.json
-│   └── src/
-│       ├── app.js
-│       ├── config.js
-│       ├── models/
-│       ├── services/
-│       └── utils/
-│
-├── utils/
-│
-├── docker-compose.yml
-├── package.json
+├── .env                              # Biến môi trường (không commit lên git)
+├── .env.example                      # Mẫu .env
+├── docker-compose.yml                # Dev: build từ source
+├── docker-compose-prod.yaml          # Prod: pull image từ Docker Hub
 └── README.md
 ```
 
-## 🚀 Khởi động dự án
+---
 
-### Yêu cầu
+## 🐳 Cách 1 – Chạy bằng Docker Compose (Khuyến nghị)
 
-- Node.js >= 14
-- Docker & Docker Compose
-- MongoDB & RabbitMQ (nếu chạy local)
+> Cách này **không cần cài Node.js hay MongoDB** trên máy. Docker lo hết.
 
-### 1. Chạy bằng Docker (Khuyến nghị)
+### Bước 1 – Clone repository
 
 ```bash
-git clone <repository-url>
-cd EProject
-docker-compose up --build
-# hoặc chạy nền
-docker-compose up -d --build
+git clone https://github.com/KDisme/22653721-NguyenHoangKhanhDuy-EProject.git
+cd 22653721-NguyenHoangKhanhDuy-EProject
 ```
 
-Các service sẽ chạy tại:
-- API Gateway: http://localhost:3003
-- Auth: http://localhost:3000
-- Product: http://localhost:3001
-- Order: http://localhost:3002
-- RabbitMQ: http://localhost:15672 (guest/guest)
+### Bước 2 – Tạo file `.env`
 
-### 2. Chạy local (phát triển)
+Sao chép từ file mẫu:
 
 ```bash
+# Windows PowerShell
+copy .env.example .env
+
+# Mac/Linux
+cp .env.example .env
+```
+
+Nội dung `.env` mặc định (giữ nguyên khi dùng Docker):
+
+```env
+MONGODB_URI=mongodb://nammongodb:27017/product_db
+PORT=3001
+```
+
+### Bước 3 – Build và chạy
+
+```bash
+docker compose up --build
+```
+
+Hoặc chạy nền:
+
+```bash
+docker compose up -d --build
+```
+
+### Bước 4 – Kiểm tra
+
+```bash
+# Xem container đang chạy
+docker compose ps
+
+# Kiểm tra health
+curl http://localhost:3001/health
+```
+
+**API chạy tại:** http://localhost:3001
+
+### Dừng containers
+
+```bash
+docker compose down
+
+# Xoá luôn volume (xoá dữ liệu MongoDB)
+docker compose down -v
+```
+
+---
+
+## 💻 Cách 2 – Chạy Local (không dùng Docker)
+
+> Cần có **MongoDB đang chạy** trên máy (port 27017).
+
+### Bước 1 – Clone và cài dependencies
+
+```bash
+git clone https://github.com/KDisme/22653721-NguyenHoangKhanhDuy-EProject.git
+cd 22653721-NguyenHoangKhanhDuy-EProject/product
 npm install
-cd auth && npm install
-cd ../product && npm install
-cd ../order && npm install
-cd ../api-gateway && npm install
 ```
-Tạo file `.env` cho từng service (tham khảo mẫu trong mã nguồn).
 
-Khởi động từng service ở các terminal riêng:
-```bash
-cd auth && npm start
-cd product && npm start
-cd order && npm start
-cd api-gateway && npm start
+### Bước 2 – Tạo file `.env` trong thư mục gốc
+
+```env
+MONGODB_URI=mongodb://localhost:27017/product_db
+PORT=3001
 ```
+
+> ⚠️ Lưu ý: Khi chạy local thì dùng `localhost`, **không phải** `nammongodb`.
+
+### Bước 3 – Chạy server
+
+```bash
+npm start
+```
+
+---
+
+## 🚀 Cách 3 – Chạy Production từ Docker Hub
+
+> Dùng image đã được build sẵn trên Docker Hub, **không cần source code**.
+
+### Bước 1 – Tạo file `.env` với Docker Hub username
+
+```env
+DOCKERHUB_USERNAME=your_dockerhub_username
+```
+
+### Bước 2 – Pull và chạy
+
+```bash
+docker compose -f docker-compose-prod.yaml pull
+docker compose -f docker-compose-prod.yaml up -d
+```
+
+---
 
 ## 🌐 API Endpoints
 
-### Auth Service
+**Base URL:** `http://localhost:3001`
 
-- `POST   /auth/register` – Đăng ký tài khoản
-- `POST   /auth/login` – Đăng nhập, nhận JWT
-- `GET    /auth/profile` – Lấy thông tin user (yêu cầu Bearer token)
+| Method | Endpoint | Mô tả | Body (JSON) |
+|---|---|---|---|
+| `GET` | `/health` | Kiểm tra server & DB | — |
+| `GET` | `/api/products` | Lấy tất cả sản phẩm | — |
+| `GET` | `/api/products/:id` | Lấy sản phẩm theo `_id` | — |
+| `POST` | `/api/products` | Tạo sản phẩm mới | `{ pname, price, quantity }` |
+| `PUT` | `/api/products/:id` | Cập nhật sản phẩm | `{ pname?, price?, quantity? }` |
+| `DELETE` | `/api/products/:id` | Xoá sản phẩm | — |
 
-### Product Service
+### Ví dụ tạo sản phẩm
 
-- `POST   /products` – Tạo sản phẩm mới (yêu cầu Bearer token)
-- `GET    /products` – Lấy danh sách sản phẩm (yêu cầu Bearer token)
-- `POST   /products/buy` – Tạo đơn hàng (yêu cầu Bearer token)
-- `GET    /products/order/:orderId` – Kiểm tra trạng thái đơn hàng
+```bash
+curl -X POST http://localhost:3001/api/products \
+  -H "Content-Type: application/json" \
+  -d '{"pname": "Laptop Dell", "price": 15000000, "quantity": 10}'
+```
 
-## 🔄 Quy trình tạo đơn hàng
+**Response:**
+```json
+{
+  "_id": "64abc...",
+  "pid": "SP001",
+  "pname": "Laptop Dell",
+  "price": 15000000,
+  "quantity": 10
+}
+```
 
-1. User đăng nhập, nhận JWT.
-2. Gọi `/products/buy` với danh sách sản phẩm.
-3. Product Service gửi message vào queue `orders`.
-4. Order Service nhận message, xử lý đơn hàng, gửi kết quả vào queue `products`.
-5. Product Service nhận kết quả, trả về client.
+> **Lưu ý:** `pid` được tự động sinh (SP001, SP002, ...), không cần truyền vào.
 
-## 🔐 Authentication Flow
+---
 
-- Đăng ký: Lưu user với password đã hash (bcryptjs).
-- Đăng nhập: Trả về JWT.
-- Gửi token qua header `Authorization: Bearer <token>`.
-- Middleware xác thực token ở các route bảo vệ.
+## 🧪 Chạy Tests
 
-## 🐳 Các service Docker
+### Chạy test trong container Docker
 
-- rabbitmq (Message Broker)
-- mongodb (Database)
-- api-gateway (Reverse Proxy)
-- auth (Authentication Service)
-- product (Product Management)
-- order (Order Processing)
+```bash
+docker exec product-api npm test
+```
+
+### Chạy test local (cần API đang chạy tại port 3001)
+
+```bash
+cd product
+PRODUCT_SERVICE_URL=http://localhost:3001 npm test
+```
+
+Test bao gồm toàn bộ CRUD:
+- ✅ POST – Tạo sản phẩm
+- ✅ GET all – Lấy danh sách
+- ✅ GET by id – Lấy theo id
+- ✅ PUT – Cập nhật
+- ✅ DELETE – Xoá
+- ✅ Validation (thiếu field → 400)
+- ✅ Not found (id sai → 404)
+
+---
+
+## ⚙️ CI/CD Pipeline
+
+```
+push to main
+     │
+     ▼
+┌─────────────────────────────┐
+│  test-productci.yml         │  ← CI đơn giản (Docker Compose)
+│  test-productci-prod.yml    │  ← CI prod (MongoDB service GitHub VM)
+└─────────────────────────────┘
+     │ (nếu pass)
+     ▼
+┌─────────────────────────────┐
+│  cd-dockerhub.yml           │  ← Build & push image lên Docker Hub
+└─────────────────────────────┘
+     │ (sau khi push thành công)
+     ▼
+┌─────────────────────────────┐
+│  cd-deploy-local.yml        │  ← SSH vào máy local, pull & restart
+└─────────────────────────────┘
+```
+
+---
+
+## 🔐 Setup Secrets cho GitHub Actions
+
+Vào **GitHub repo → Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Mô tả | Lấy ở đâu |
+|---|---|---|
+| `DOCKERHUB_USERNAME` | Username Docker Hub | Đăng ký tại hub.docker.com |
+| `DOCKERHUB_TOKEN` | Access Token Docker Hub | hub.docker.com → Account Settings → Security → New Access Token |
+| `DEPLOY_HOST` | IP máy deploy (cho CD tự động) | IP public hoặc ngrok của máy |
+| `DEPLOY_USER` | Username SSH của máy | Tên user máy tính |
+| `DEPLOY_SSH_KEY` | Private key SSH | Chạy `ssh-keygen`, copy nội dung file `id_rsa` |
+| `DEPLOY_PORT` | Port SSH | Thường là `22` |
+| `DEPLOY_PATH` | Đường dẫn project trên máy | VD: `/home/user/product-api` |
+
+> ⚠️ **Không commit** file `.env` lên git. File này đã có trong `.gitignore`.
+
+---
 
 ## 🛠️ Công nghệ sử dụng
 
-- Node.js, Express, MongoDB, Mongoose
-- RabbitMQ, JWT, bcryptjs
-- Docker, Docker Compose
-- Mocha, Chai (Testing)
-- dotenv
-
-## � Monitoring & Debug
-
-- RabbitMQ UI: http://localhost:15672 (guest/guest)
-- MongoDB: mongodb://localhost:27017 (auth_service, product_service, order_service)
-- Xem logs: `docker-compose logs -f [service]`
+- **Runtime:** Node.js 18, Express 4
+- **Database:** MongoDB 6.0, Mongoose 7
+- **Testing:** Mocha, Chai, chai-http
+- **Container:** Docker, Docker Compose
+- **CI/CD:** GitHub Actions, Docker Hub
+- **Config:** dotenv
 
 ---
 
-**Tác giả:** Nguyễn Hoàng Khánh Duy – MSSV: 22653721  
----
+**Tác giả:** Nguyễn Hoàng Khánh Duy – MSSV: 22653721
