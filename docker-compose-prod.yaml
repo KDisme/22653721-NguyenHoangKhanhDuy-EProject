@@ -1,0 +1,45 @@
+# docker-compose-prod.yaml
+# Dùng d? ch?y product-api t? image dã publish trên Docker Hub
+# L?nh: docker compose -f docker-compose-prod.yaml up -d
+
+services:
+
+  mongodb:
+    image: mongo:6.0
+    container_name: nammongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: product_db
+    volumes:
+      - mongodb_prod_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  product-api:
+    # Pull image t? Docker Hub (thay YOUR_DOCKERHUB_USERNAME b?ng username th?t)
+    image: ${DOCKERHUB_USERNAME}/product-api:latest
+    container_name: product-api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - MONGODB_URI=mongodb://nammongodb:27017/product_db
+      - PORT=3001
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  mongodb_prod_data:

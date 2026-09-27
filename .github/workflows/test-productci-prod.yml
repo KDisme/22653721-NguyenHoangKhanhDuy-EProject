@@ -1,0 +1,79 @@
+name: CI-Prod - Product API (Production)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-prod:
+    name: Test CRUD Product API (Production)
+    runs-on: ubuntu-latest
+
+    # -- MongoDB service ch?y th?ng trên GitHub VM -------------------------
+    services:
+      mongodb:
+        image: mongo:6.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval \"db.adminCommand('ping')\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 20s
+
+    steps:
+      # -- 1. Checkout source code ------------------------------------------
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # -- 2. Setup Node.js -------------------------------------------------
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: product/package-lock.json
+
+      # -- 3. Install dependencies ------------------------------------------
+      - name: Install dependencies
+        working-directory: product
+        run: npm install
+
+      # -- 4. Start Product API server --------------------------------------
+      - name: Start Product API
+        working-directory: product
+        env:
+          MONGODB_URI: mongodb://localhost:27017/product_db_test
+          PORT: 3001
+        run: |
+          npm start > /tmp/api.log 2>&1 &
+          echo "API PID=$!"
+          for i in $(seq 1 20); do
+            echo "  attempt $i: waiting for API..."
+            curl -sf http://localhost:3001/health && break || true
+            sleep 3
+          done
+
+      # -- 5. Ki?m tra health -----------------------------------------------
+      - name: Verify API health
+        run: |
+          STATUS=$(curl -sf http://localhost:3001/health)
+          echo "Health response: $STATUS"
+          echo "$STATUS" | grep -q '"status":"ok"' || (echo "API not healthy!" && exit 1)
+
+      # -- 6. Run CRUD tests ------------------------------------------------
+      - name: Run CRUD tests
+        working-directory: product
+        env:
+          PRODUCT_SERVICE_URL: http://localhost:3001
+          MONGODB_URI: mongodb://localhost:27017/product_db_test
+          PORT: 3001
+        run: npm test
+
+      # -- 7. Show logs on failure ------------------------------------------
+      - name: Print API logs on failure
+        if: failure()
+        run: cat /tmp/api.log 2>/dev/null || echo "No log file found"

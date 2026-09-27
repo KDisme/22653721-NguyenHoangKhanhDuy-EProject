@@ -1,0 +1,66 @@
+name: CD - Auto Deploy to Local Docker Engine
+
+on:
+  # Trigger sau khi cd-dockerhub.yml hoàn thành thành công
+  workflow_run:
+    workflows: ["CD - Build & Push to Docker Hub"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to Local Docker Engine
+    runs-on: ubuntu-latest
+    # Ch? ch?y n?u workflow CD tru?c dó thành công
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # -- G?i webhook/SSH vào local machine d? pull & restart -------------
+      # Cách 1: Dùng SSH (self-hosted runner ho?c SSH vào máy local)
+      - name: Deploy via SSH to local machine
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: |
+            echo "=== [$(date)] Starting deployment ==="
+
+            # Di chuy?n vào thu m?c project
+            cd ${{ secrets.DEPLOY_PATH }}
+
+            # Pull image m?i nh?t t? Docker Hub
+            echo "Pulling latest image from Docker Hub..."
+            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} \
+              docker compose -f docker-compose-prod.yaml pull product-api
+
+            # Restart container v?i image m?i
+            echo "Restarting product-api container..."
+            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }} \
+              docker compose -f docker-compose-prod.yaml up -d --no-build
+
+            # Ch? healthcheck
+            echo "Waiting for product-api to be healthy..."
+            for i in $(seq 1 15); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' product-api 2>/dev/null || echo "starting")
+              echo "  attempt $i: $STATUS"
+              [ "$STATUS" = "healthy" ] && echo "Deployment successful!" && break
+              sleep 5
+            done
+
+            # Ki?m tra cu?i
+            docker compose -f docker-compose-prod.yaml ps
+            echo "=== [$(date)] Deployment complete ==="
+
+      - name: Notify deployment result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "? Deployment to local Docker Engine SUCCEEDED"
+          else
+            echo "? Deployment to local Docker Engine FAILED"
+          fi
